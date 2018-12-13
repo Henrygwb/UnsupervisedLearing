@@ -1,7 +1,6 @@
 import os
 import sys
-import tensorflow as tf 
-import tensorflow.contrib.slim as slim
+import keras.backend as K
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn import metrics
@@ -17,6 +16,9 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
 	    if i == 0:
 	    	H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
 	    	H = Dropout(rate)(H)
+        if i == n_layers-1:
+            H = Dense(hidden_neurons[i + 1], activation='linear', name='encoder_%d' % (i+1))(X)
+            H = Dropout(rate)(H)
 	    else:
 	    	H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
 	    	H = Dropout(rate)(H)
@@ -56,31 +58,45 @@ class DeepClusteringNetwork(object):
  	def load_model(self, weights):
  		self.model.load_weights(weights) 
 
- 	def hidden_representations(self):
- 		return self.model.predict(self.X)
+ 	def hidden_representations(self, X):
+ 		return self.model.predict(X)
 
  	def predict_classes(self, X):
 
  		return
 
- 	def build_finetune_model(self):
- 		self.inputs = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'inputs')
- 		self.centers = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'centers')
- 		
+ 	# def build_finetune_model(self):
+ 	# 	self.inputs = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'inputs')
+ 	# 	self.centers = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'centers')
+
+    def finetune_loss(self, X, center, beta, lbd):
+        low_repre = hidden_representations(X)
+        temp = K.pow(center - low_repre, 2)
+        L = K.sum(temp, axis = 1)
+
+ 		# Add the network reconstruction error
+        z = self.ae(X)
+        reconst_err = K.sum(K.pow(X - z, 2), axis=1)
+        L = beta*L + lbd*reconst_err
+
+        cost = K.mean(L)
+        # reconst_cost = lbd*K.mean(reconst_err)
+        # cluster_cost = cost - reconst_cost
+        return cost
 
 
     def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir)
 
+    	self.model.compile(optimizer = optimizer, loss = self.finetune_loss)
 
-    	print 'Initializing the cluster centers with k-means.'
-    	kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
-    	y_pred = kmeans.fit_predict(self.encoder.predict(self.X))
-        y_pred_last = np.copy(y_pred)
-    	self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
+        print 'Initializing the cluster centers with k-means.'
+    	kmeans = KMeans(n_clusters = self.n_clusters, n_init = 10)
+    	kmeans.fit(self.X)
+        center = kmeans.cluster_centers_
     	
     	for ite in range(int(epochs)):
-
     		if ite % update_interval == 0:
+
                 q = self.model.predict(self.X, verbose=0)
                 p = self.target_distribution(q)  # update the auxiliary target distribution p
 
