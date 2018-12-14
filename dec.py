@@ -124,7 +124,7 @@ class DeepEmbeddingClustering(object):
     	y_pred = kmeans.fit_predict(self.encoder.predict(self.X))
         y_pred_last = np.copy(y_pred)
     	self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
-    	
+    	index_array = np.arange(self.X.shape[0])
     	for ite in range(int(epochs)):
 
     		if ite % update_interval == 0:

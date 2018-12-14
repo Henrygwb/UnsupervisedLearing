@@ -62,8 +62,13 @@ class DeepClusteringNetwork(object):
  		return self.model.predict(X)
 
  	def predict_classes(self, X):
-
- 		return
+        km = KMeans(n_clusters=self.n_clusters, n_init=10)
+        km.fit(X)
+        idx = km.labels_
+        centers = km.cluster_centers_
+        centers = centers.astype(numpy.float32)
+        idx = idx.astype(numpy.int32)
+        return idx
 
  	# def build_finetune_model(self):
  	# 	self.inputs = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'inputs')
@@ -84,55 +89,101 @@ class DeepClusteringNetwork(object):
         # cluster_cost = cost - reconst_cost
         return cost
 
+    def init_cluster(data):
+        km = KMeans(n_clusters=self.n_clusters, n_init=10)
+        km.fit(data)
+        idx = km.labels_
+        centers = km.cluster_centers_
+        centers = centers.astype(numpy.float32)
+        idx = idx.astype(numpy.int32)
+        return idx, centers
 
-    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir)
+    def batch_km(data, center, count):
+        N = data.shape[0]
+        K = center.shape[0]
+
+        # update assignment
+        idx = numpy.zeros(N, dtype=numpy.int)
+        for i in range(N):
+            dist = numpy.inf
+            ind = 0
+            for j in range(K):
+                temp_dist = numpy.linalg.norm(data[i] - center[j])
+                if temp_dist < dist:
+                    dist = temp_dist
+                    ind = j
+            idx[i] = ind
+
+        # update centriod
+        center_new = center
+        for i in range(N):
+            c = idx[i]
+            count[c] += 1
+            eta = 1.0/count[c]
+            center_new[c] = (1 - eta) * center_new[c] + eta * data[i]
+        center_new.astype(numpy.float32)
+        return idx, center_new, count
+
+    def train(self, optimizer, batch_size, epochs, beta, lbd, tol, update_interval, save_dir)
 
     	self.model.compile(optimizer = optimizer, loss = self.finetune_loss)
 
         print 'Initializing the cluster centers with k-means.'
-    	kmeans = KMeans(n_clusters = self.n_clusters, n_init = 10)
-    	kmeans.fit(self.X)
-        center = kmeans.cluster_centers_
-    	
-    	for ite in range(int(epochs)):
-    		if ite % update_interval == 0:
+        hidden_array = self.hidden_representations(self.X)
+        y_pred, center = init_cluster(hidden_array)
+        count = 100*numpy.ones(nClass, dtype=numpy.int)
 
-                q = self.model.predict(self.X, verbose=0)
-                p = self.target_distribution(q)  # update the auxiliary target distribution p
+    	n_batches = self.X.shape[0]/batch_size
+    	index_array = np.arange(self.X.shape[0])
+        for ite in range(int(epochs)):
+            for minibatch_idx in xrange(n_batches):
+                center_tmp = center[y_pred[minibatch_index * batch_size:
+                                    (minibatch_index + 1) * batch_size]]
+
+                idx_tmp = index_array[index * batch_size: min((index+1) * batch_size, x.shape[0])]
+                loss = self.model.train_on_batch(x=self.X[idx_tmp], center=center_tmp, beta = beta, lbd = lbd)
+                hidden_rep_tmp = self.hidden_representations(self.X[idx_tmp])
+                temp_y_pred, centers, count = batch_km(hidden_val, centers, count)
+                y_pred[minibatch_index * batch_size:
+                    (minibatch_index + 1) * batch_size] = temp_y_pred
+                
+                ## check if empty cluster happen, if it does random initialize it
+                #for i in range(nClass):
+                #    if count_samples[i] == 0:
+                #        rand_idx = numpy.random.randint(low = 0, high = n_train_samples)
+                #        # modify the centroid
+                #        centers[i] = out_single(rand_idx)
+
+            if ite % update_interval == 0:
+                hidden_array = self.hidden_representations(self.X)
+                y_pred_new, center = init_cluster(hidden_array)
+                for i in range(self.n_clusters):
+                    count[i] += y_pred_new.shape[0] - numpy.count_nonzero(y_pred_new - i)
 
                 # evaluate the clustering performance
-                y_pred = q.argmax(1)
-                if y is not None:
-                    acc = np.round(metrics.acc(self.y, y_pred), 5)
-                    nmi = np.round(metrics.nmi(self.y, y_pred), 5)
-                    ari = np.round(metrics.ari(self.y, y_pred), 5)
-                    loss = np.round(loss, 5)
-                    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
+                acc = np.round(metrics.acc(self.y, y_pred_new), 5)
+                nmi = np.round(metrics.nmi(self.y, y_pred_new), 5)
+                ari = np.round(metrics.ari(self.y, y_pred_new), 5)
+                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
                 # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
-                y_pred_last = np.copy(y_pred)
+                delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / idx.shape[0]
+                y_pred = np.copy(y_pred_new)
                 if ite > 0 and delta_label < tol:
                     print('delta_label ', delta_label, '< tol ', tol)
                     print('Reached tolerance threshold. Stopping training.')
                     break
 
-            idx = index_array[index * batch_size: min((index+1) * batch_size, x.shape[0])]
-            loss = self.model.train_on_batch(x=self.X[idx], y=p[idx])
-            index = index + 1 if (index + 1) * batch_size <= x.shape[0] else 0
-            ite += 1
-
         # save the trained model
-        print('saving model to:', save_dir + '/DEC_model_final.h5')
-        self.model.save_weights(save_dir + '/DEC_model_final.h5')
+        print('saving model to:', save_dir + '/DCN_model_final.h5')
+        self.model.save_weights(save_dir + '/DCN_model_final.h5')
 
         return y_pred
 
     def evaluate(self):
-    	y_pred = self.predict_classes(self.X)
+        y_pred = self.predict_classes(self.X)
         acc = np.round(metrics.acc(self.y, y_pred), 5)
         nmi = np.round(metrics.nmi(self.y, y_pred), 5)
         ari = np.round(metrics.ari(self.y, y_pred), 5)
         print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
-
        	return 0
