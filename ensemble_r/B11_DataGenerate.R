@@ -1,4 +1,3 @@
-
 library(MCMCpack) # for riwish
 library(mvtnorm)
 library(clusterGeneration)

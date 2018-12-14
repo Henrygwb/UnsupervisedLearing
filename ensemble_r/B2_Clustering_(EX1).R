@@ -1,8 +1,7 @@
 rm(list=ls())
-setwd("/Users/BSS/Documents/7.Research/Cluster_Stability_2/Jan10_CS_(EX1)")
+setwd("~/Desktop/EnsembleClustering/ensemble_r")
 
 source("B11_DataGenerate.R")
-
 source("A0_Functions.R")
 source("A1_ClustMethods.R")
 source("E0_draw.obs.R")
