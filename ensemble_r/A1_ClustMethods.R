@@ -3,7 +3,7 @@ library(mclust) # for Mclust
 library(class) # for knn
 library(dbscan) # for dbscan
 
-library("mclust") #for HMMVB
+#library("mclust") #for HMMVB
 library("pryr") #for HMMVB
 
 
