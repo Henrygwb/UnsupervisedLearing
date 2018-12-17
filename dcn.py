@@ -160,7 +160,7 @@ class DeepClusteringNetwork(object):
                 print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
                 # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / idx.shape[0]
+                delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / index_array.shape[0]
                 y_pred = np.copy(y_pred_new)
                 if ite > 0 and delta_label < tol:
                     print('delta_label ', delta_label, '< tol ', tol)
