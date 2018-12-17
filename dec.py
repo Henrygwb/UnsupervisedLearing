@@ -15,28 +15,28 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
     X = Input(shape=(hidden_neurons[0],), name='input')
 
     for i in range(n_layers):
-	    if i == 0:
-	    	H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
-	    	H = Dropout(rate)(H)
-	    else:
-	    	H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
-	    	H = Dropout(rate)(H)
+        if i == 0:
+            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
+            H = Dropout(rate)(H)
+        else:
+            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
+            H = Dropout(rate)(H)
 
     for i in range(n_layers-1, -1, -1):
-	    if i == n_layers-1:
-    	    Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(H)
-	    	Y = Dropout(rate)(Y)
+        if i == n_layers-1:
+            Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(H)
+            Y = Dropout(rate)(Y)
 
-    	else:
-    		Y = Dense(dims[0], kernel_initializer=init, name='decoder_%d' % i)(Y)
-	    	Y = Dropout(rate)(Y)
+        else:
+            Y = Dense(hidden_neurons[0], kernel_initializer=init, name='decoder_%d' % i)(Y)
+            Y = Dropout(rate)(Y)
 
     return Model(inputs=X, outputs=Y, name='AE'), Model(inputs=X, outputs=H, name='encoder')
 
 
 class ClusteringLayer(Layer):
-	def __init__(self, n_cluster, input_dim=None, weights=None, alpha=1.0, **kwargs):
-		super(ClusteringLayer, self).__init__(**kwargs)
+    def __init__(self, n_cluster, input_dim=None, weights=None, alpha=1.0, **kwargs):
+        super(ClusteringLayer, self).__init__(**kwargs)
         self.n_cluster = n_cluster
         self.input_dim = input_dim
         self.alpha = alpha
@@ -51,15 +51,14 @@ class ClusteringLayer(Layer):
         input_dim = input_shape[1]
         self.input_spec = [InputSpec(dtype=K.floatx(),
                                      shape=(None, input_dim))]
-
-		self.clusters = self.add_weight((self.n_clusters, input_dim), initializer='glorot_uniform', name='clusters')
+        self.clusters = self.add_weight((self.n_clusters, input_dim), initializer='glorot_uniform', name='clusters')
         if self.initial_weights is not None:
             self.set_weights(self.initial_weights)
             del self.initial_weights
         self.built = True
         
     def call(self, x, mask=None):
-        q = 1.0/(1.0 + K.sum(K.square(K.expand_dims(x, 1) - self.W), axis=2)) / self.alpha)
+        q = 1.0/(1.0 + (K.sum(K.square(K.expand_dims(x, 1) - self.clusters), axis=2) / self.alpha))
         q = q**((self.alpha+1.0)/2.0)
         q = K.transpose(K.transpose(q)/K.sum(q, axis=1))
         return q
@@ -80,14 +79,9 @@ class ClusteringLayer(Layer):
 
 
 class DeepEmbeddingClustering(object):
-    def __init__(self,
-    			 X,
-    			 y,
-                 hidden_neurons,
-                 n_clusters,
-                 alpha=1.0):
-    	self.X = X
-    	self.y = y
+    def __init__(self, X, y, hidden_neurons, n_clusters, alpha=1.0):
+        self.X = X
+        self.y = y
         self.n_clusters = n_clusters
         self.input_dim = hidden_neurons[0]
         self.ae, self.encoder = build_ae(hidden_neurons)
@@ -95,39 +89,35 @@ class DeepEmbeddingClustering(object):
         self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
 
     def pretrain(self, batch_size, epochs, save_dir):
-    	self.ae.compile(optimizer='adam', loss = 'mse')
-    	self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs)
-    	self.ae.save(os.path.join('save_dir', 'pretrained_ae.h5'))
-    	print ('Finish pretraining and save the model to %s' % save_dir)
- 	   	self.pretrained = True
+        self.ae.compile(optimizer='adam', loss = 'mse')
+        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs)
+        self.ae.save(os.path.join('save_dir', 'pretrained_ae.h5'))
+        print ('Finish pretraining and save the model to %s' % save_dir)
 
- 	def load_model(self, weights):
- 		self.model.load_weights(weights) 
+    def load_model(self, weights):
+        self.model.load_weights(weights)
 
- 	def hidden_representations(self, X):
- 		return self.encoder.predict(X)
+    def hidden_representations(self, X):
+        return self.encoder.predict(X)
 
- 	def predict_classes(self, X):
- 		q = self.model.predict(X, verbose = 0)
- 		return q.argmax(1)
+    def predict_classes(self, X):
+        q = self.model.predict(X, verbose = 0)
+        return q.argmax(1)
 
- 	def auxiliary_distribution(self, q):
+    def auxiliary_distribution(self, q):
         p = q ** 2 / q.sum(0)
         return (p.T / p.sum(1)).T
 
-    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir)
-
-    	self.model.complie(optimizer = optimizer, loss = 'kld')
-
-    	print 'Initializing the cluster centers with k-means.'
-    	kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
-    	y_pred = kmeans.fit_predict(self.encoder.predict(self.X))
+    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir):
+        self.model.complie(optimizer = optimizer, loss = 'kld')
+        print 'Initializing the cluster centers with k-means.'
+        kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
+        y_pred = kmeans.fit_predict(self.encoder.predict(self.X))
         y_pred_last = np.copy(y_pred)
-    	self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
-    	index_array = np.arange(self.X.shape[0])
-    	for ite in range(int(epochs)):
-
-    		if ite % update_interval == 0:
+        self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
+        index_array = np.arange(self.X.shape[0])
+        for ite in range(int(epochs)):
+            if ite % update_interval == 0:
                 q = self.model.predict(self.X, verbose=0)
                 p = self.target_distribution(q)  # update the auxiliary target distribution p
 
@@ -160,14 +150,14 @@ class DeepEmbeddingClustering(object):
         return y_pred
 
     def evaluate(self):
-    	y_pred = self.predict_classes(self.X)
+        y_pred = self.predict_classes(self.X)
         acc = np.round(metrics.acc(self.y, y_pred), 5)
         nmi = np.round(metrics.nmi(self.y, y_pred), 5)
         ari = np.round(metrics.ari(self.y, y_pred), 5)
         print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
+        return 0
 
-       	return 0
-
+"""
 if __name__ == "__main__":
     # setting the hyper parameters
     x, y = load_data(args.dataset)
@@ -196,3 +186,4 @@ if __name__ == "__main__":
                      update_interval=update_interval, save_dir=args.save_dir)
     print('acc:', metrics.acc(y, y_pred))
     print('clustering time: ', (time() - t0))
+"""

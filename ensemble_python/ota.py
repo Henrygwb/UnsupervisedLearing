@@ -19,11 +19,12 @@ class ota(object):
             idx[i,:] = np.random.choice(self.n, self.n, replace=True)
         return idx
 
-    def align_bs(self):
+    def align_bs(self, yb, n_boostrep):
         """
         Align bootstrap samples
         :return:
         """
+
         return 0
 
     def get_repre(self):
