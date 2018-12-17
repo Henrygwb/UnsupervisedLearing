@@ -8,6 +8,8 @@ from keras.layers import Dense, Dropout, Input
 from sklearn.cluster import KMeans
 from sklearn import metrics
 import pickle
+import progressbar
+from time import sleep
 
 
 def build_ae(hidden_neurons, rate = 0.5, act='relu'):
@@ -20,7 +22,8 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
             H = Dropout(rate)(H)
         else:
             H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
-            H = Dropout(rate)(H)
+            if i != 3:
+                H = Dropout(rate)(H)
 
     for i in range(n_layers-1, -1, -1):
         if i == n_layers-1:
@@ -28,16 +31,17 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
             Y = Dropout(rate)(Y)
 
         else:
-            Y = Dense(hidden_neurons[0], kernel_initializer=init, name='decoder_%d' % i)(Y)
-            Y = Dropout(rate)(Y)
+            Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(Y)
+            if i != 0:
+                Y = Dropout(rate)(Y)
 
     return Model(inputs=X, outputs=Y, name='AE'), Model(inputs=X, outputs=H, name='encoder')
 
 
 class ClusteringLayer(Layer):
-    def __init__(self, n_cluster, input_dim=None, weights=None, alpha=1.0, **kwargs):
+    def __init__(self, n_clusters, input_dim=None, weights=None, alpha=1.0, **kwargs):
         super(ClusteringLayer, self).__init__(**kwargs)
-        self.n_cluster = n_cluster
+        self.n_clusters = n_clusters
         self.input_dim = input_dim
         self.alpha = alpha
         self.initial_weights = weights
@@ -63,16 +67,12 @@ class ClusteringLayer(Layer):
         q = K.transpose(K.transpose(q)/K.sum(q, axis=1))
         return q
 
-    def get_output_shape_for(self, input_shape):
+    def get_output_shape(self, input_shape):
         assert input_shape and len(input_shape) == 2
-        return (input_shape[0], self.output_dim)
-
-    def compute_output_shape(self, input_shape):
-        assert input_shape and len(input_shape) == 2
-        return (input_shape[0], self.output_dim)
+        return (input_shape[0], self.clusters)
 
     def get_config(self):
-        config = {'output_dim': self.output_dim,
+        config = {'output_dim': self.clusters,
                   'input_dim': self.input_dim}
         base_config = super(ClusteringLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
@@ -85,13 +85,15 @@ class DeepEmbeddingClustering(object):
         self.n_clusters = n_clusters
         self.input_dim = hidden_neurons[0]
         self.ae, self.encoder = build_ae(hidden_neurons)
-        cluster_layer = ClusteringLayer(self.n_clusters, alpha=alpha, name='clustering')(self.encoder)
+        print self.ae.summary()
+        print self.encoder.summary()
+        cluster_layer = ClusteringLayer(self.n_clusters,name='clustering')(self.encoder.output)
         self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
 
     def pretrain(self, batch_size, epochs, save_dir):
         self.ae.compile(optimizer='adam', loss = 'mse')
         self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs)
-        self.ae.save(os.path.join('save_dir', 'pretrained_ae.h5'))
+        self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)
 
     def load_model(self, weights):
@@ -108,82 +110,91 @@ class DeepEmbeddingClustering(object):
         p = q ** 2 / q.sum(0)
         return (p.T / p.sum(1)).T
 
-    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir):
-        self.model.complie(optimizer = optimizer, loss = 'kld')
-        print 'Initializing the cluster centers with k-means.'
+    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir, shuffle):
+        self.model.compile(optimizer = optimizer, loss = 'kld')
+        print '================================================='
+        print 'Initializing the cluster centers with k-means...'
+        print '================================================='
         kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
-        y_pred = kmeans.fit_predict(self.encoder.predict(self.X))
+        y_pred = kmeans.fit_predict(self.hidden_representations(self.X))
         y_pred_last = np.copy(y_pred)
         self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
+        #print kmeans.cluster_centers_
+        loss = 0
+        index = 0
         index_array = np.arange(self.X.shape[0])
+
+        print '================================================='
+        print 'Start training ...'
+        print '================================================='
+
         for ite in range(int(epochs)):
+            #print self.model.layers[-1].clusters.get_value()
             if ite % update_interval == 0:
+                if ite != 0 :
+                    bar.finish()
+                bar = progressbar.ProgressBar(maxval=update_interval,
+                                              widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
+                bar.start()
+
                 q = self.model.predict(self.X, verbose=0)
-                p = self.target_distribution(q)  # update the auxiliary target distribution p
+                p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
                 # evaluate the clustering performance
                 y_pred = q.argmax(1)
-                if y is not None:
-                    acc = np.round(metrics.acc(self.y, y_pred), 5)
-                    nmi = np.round(metrics.nmi(self.y, y_pred), 5)
-                    ari = np.round(metrics.ari(self.y, y_pred), 5)
-                    loss = np.round(loss, 5)
-                    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
+                acc = np.round(metrics.accuracy_score(self.y, y_pred), 5)
+                nmi = np.round(metrics.normalized_mutual_info_score(self.y, y_pred), 5)
+                ari = np.round(metrics.adjusted_rand_score(self.y, y_pred), 5)
+                loss = np.round(loss, 5)
+                print '****************************************'
+                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
 
                 # check stop criterion
                 delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
                 y_pred_last = np.copy(y_pred)
                 if ite > 0 and delta_label < tol:
+                    print '****************************************'
                     print('delta_label ', delta_label, '< tol ', tol)
                     print('Reached tolerance threshold. Stopping training.')
                     break
 
-            idx = index_array[index * batch_size: min((index+1) * batch_size, x.shape[0])]
+            if shuffle == True:
+                np.random.shuffle(index_array)
+
+            idx = index_array[index * batch_size: min((index+1) * batch_size, self.X.shape[0])]
             loss = self.model.train_on_batch(x=self.X[idx], y=p[idx])
-            index = index + 1 if (index + 1) * batch_size <= x.shape[0] else 0
+            index = index + 1 if (index + 1) * batch_size <= self.X.shape[0] else 0
             ite += 1
+            bar.update(ite%update_interval+1)
+            sleep(0.1)
 
         # save the trained model
+        print '****************************************'
         print('saving model to:', save_dir + '/DEC_model_final.h5')
+        print '****************************************'
+        #print self.model.layers[-1].clusters.get_value()
         self.model.save_weights(save_dir + '/DEC_model_final.h5')
 
         return y_pred
 
     def evaluate(self):
         y_pred = self.predict_classes(self.X)
-        acc = np.round(metrics.acc(self.y, y_pred), 5)
-        nmi = np.round(metrics.nmi(self.y, y_pred), 5)
-        ari = np.round(metrics.ari(self.y, y_pred), 5)
-        print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
+        acc = np.round(metrics.accuracy_score(self.y, y_pred), 5)
+        nmi = np.round(metrics.normalized_mutual_info_score(self.y, y_pred), 5)
+        ari = np.round(metrics.adjusted_rand_score(self.y, y_pred), 5)
+        print '================================================='
+        print 'Start evaluate ...'
+        print '================================================='
+        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return 0
 
-"""
-if __name__ == "__main__":
-    # setting the hyper parameters
-    x, y = load_data(args.dataset)
-    n_clusters = len(np.unique(y))
-
-    update_interval = 140
-    pretrain_epochs = 300
-    init = VarianceScaling(scale=1. / 3., mode='fan_in',
-                           distribution='uniform')  # [-limit, limit], limit=sqrt(1./fan_in)
-    pretrain_optimizer = SGD(lr=1, momentum=0.9)
-    update_interval = args.update_interval
-
-    # prepare the DEC model
-    dec = DEC(dims=[x.shape[-1], 500, 500, 2000, 10], n_clusters=n_clusters, init=init)
-
-    if args.ae_weights is None:
-        dec.pretrain(x=x, y=y, optimizer=pretrain_optimizer,
-                     epochs=pretrain_epochs, batch_size=args.batch_size,
-                     save_dir=args.save_dir)
-    else:
-        dec.autoencoder.load_weights(args.ae_weights)
-
-    dec.model.summary()
-    dec.compile(optimizer=SGD(0.01, 0.9), loss='kld')
-    y_pred = dec.fit(x, y=y, tol=args.tol, maxiter=args.maxiter, batch_size=args.batch_size,
-                     update_interval=update_interval, save_dir=args.save_dir)
-    print('acc:', metrics.acc(y, y_pred))
-    print('clustering time: ', (time() - t0))
-"""
+    def test(self, X_test, y_test):
+        print '================================================='
+        print 'Start evaluate ...'
+        print '================================================='
+        y_pred = self.predict_classes(X_test)
+        acc = np.round(metrics.accuracy_score(y_test, y_pred), 5)
+        nmi = np.round(metrics.normalized_mutual_info_score(y_test, y_pred), 5)
+        ari = np.round(metrics.adjusted_rand_score(y_test, y_pred), 5)
+        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+        return y_pred
