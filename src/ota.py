@@ -8,17 +8,6 @@ class ota(object):
         self.n = self.X.shape[0]
         self.p = self.X.shape[1]
 
-    def genbssampls(self, n_bootstrep):
-        """
-        generate bootstrap sample with replacement.
-        :param n_bootstrap: number of bootstrap sample
-        :return: bootstap sample
-        """
-        idx = np.zeros((n_bootstrep, self.n))
-        for i in xrange(n_bootstrep):
-            idx[i,:] = np.random.choice(self.n, self.n, replace=True)
-        return idx
-
     def align_bs(self, yb, n_boostrep):
         """
         Align bootstrap samples

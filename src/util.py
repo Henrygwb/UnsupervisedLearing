@@ -27,6 +27,18 @@ def gendata(n, p, c):
 
     return X, y
 
+def genbssamples(n_bootstrep, num_samples):
+    """
+    generate bootstrap sample with replacement.
+    :param n_bootstrap: number of bootstrap sample
+    :return: bootstap sample
+    """
+    idx = np.zeros((n_bootstrep, num_samples))
+    for i in xrange(n_bootstrep):
+        idx[i,:] = np.random.choice(num_samples, num_samples, replace=True).astype('int32')
+    return idx
+
+
 ##### clustering approach
 class Cluster(object):
     def __init__(self, X_train, X_test):
