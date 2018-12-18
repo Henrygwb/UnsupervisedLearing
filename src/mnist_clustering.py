@@ -33,16 +33,14 @@ if __name__ == "__main__":
 
     #fintune_epochs = 50
     fintune_epochs = 10
-    beta = 1
     lbd = 1
     #update_interval = 10
     update_interval = 2
 
-    dcn_test = DeepClusteringNetwork(X = X, y = y, hidden_neurons = hidden_neurons, n_clusters = n_clusters)
-    dcn_test.pretrain(batch_size = batch, epochs = pre_epochs, save_dir = path)
-    dcn_test.train(optimizer = 'adam', batch_size = batch, epochs = fintune_epochs, beta = beta, lbd = lbd,
+    dcn_test = DeepClusteringNetwork(X = X, y = y, hidden_neurons = hidden_neurons, n_clusters = n_clusters, lbd = lbd)
+    dcn_test.train(batch_size = batch, pre_epochs = pre_epochs, finetune_epochs = fintune_epochs,
                    update_interval = update_interval, save_dir = path)
-    dcn_test.evaluate()
+    dcn_test.test(X, y)
 
 
     """

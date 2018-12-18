@@ -1,87 +1,89 @@
 import os
 import sys
-import keras.backend as K
+import tensorflow as tf
+import tensorflow.contrib.slim as slim
+import scipy
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn import metrics
-import scipy
-from keras.models import Model
-from keras.layers import Dense, Dropout, Input
-
-def build_ae(hidden_neurons, rate = 0.5, act='relu'):
-    n_layers = len(hidden_neurons) - 1
-    X = Input(shape=(hidden_neurons[0],), name='input')
-
-    for i in range(n_layers):
-        if i == 0:
-            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
-            H = Dropout(rate)(H)
-        if i == n_layers-1:
-            H = Dense(hidden_neurons[i + 1], activation='linear', name='encoder_%d' % (i+1))(X)
-            H = Dropout(rate)(H)
-        else:
-            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
-            H = Dropout(rate)(H)
-
-    for i in range(n_layers-1, -1, -1):
-        if i == n_layers-1:
-            Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(H)
-            Y = Dropout(rate)(Y)
-
-        else:
-            Y = Dense(hidden_neurons[0], name='decoder_%d' % i)(Y)
-            Y = Dropout(rate)(Y)
-
-    return Model(inputs=X, outputs=Y, name='AE'), Model(inputs=X, outputs=H, name='encoder')
 
 
 class DeepClusteringNetwork(object):
-    def __init__(self, X, y, hidden_neurons, n_clusters, alpha=1.0):
+    def __init__(self, X, y, hidden_neurons, n_clusters, lbd, mode = 'pretrain', config = tf.ConfigProto()):
         self.X = X
         self.y = y
+        self.mode = mode
+        self.hidden_neurons = hidden_neurons
         self.n_clusters = n_clusters
         self.input_dim = hidden_neurons[0]
-        self.ae, self.model = build_ae(hidden_neurons)
+        self.lbd = lbd
+        self.config = config
+        self.build_model()
 
-    def pretrain(self, batch_size, epochs, save_dir):
-        self.ae.compile(optimizer='adam', loss = 'mse')
-        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs)
-        self.ae.save(os.path.join('save_dir', 'pretrained_ae.h5'))
-        print ('Finish pretraining and save the model to %s' % save_dir)
+    def build_ae(self, input, rate=0.5, act=tf.nn.relu, reuse = False):
+        n_layers = len(self.hidden_neurons) - 1
 
-    def load_model(self, weights):
-        self.model.load_weights(weights)
+        with tf.variable_scope('encoder', reuse=reuse):
+            with slim.arg_scope([slim.fully_connected], activation_fn=act, is_training= (self.mode == 'pretrain' or self.mode == 'train')):
+                with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain'or self.mode == 'train')):
+                    for i in range(n_layers):
+                        if i == 0:
+                            H = slim.fully_connected(input, self.hidden_neurons[i + 1], scope='encoder_%d' % (i + 1))
+                            H = slim.dropout(H, scope = 'encoder_dropout_%d' % (i + 1))
+                        else:
+                            H = slim.fully_connected(H, self.hidden_neurons[i + 1], scope='encoder_%d' % (i + 1))
+                            if i != n_layers:
+                                H = slim.dropout(H, scope='encoder_dropout_%d' % (i + 1))
 
-    def hidden_representations(self, X):
-        return self.model.predict(X)
+        with tf.variable_scope('decoder', reuse=reuse):
+            with slim.arg_scope([slim.fully_connected], activation_fn=act, is_training= (self.mode == 'pretrain')):
+                with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain')):
 
-    def predict_classes(self, X):
-        km = KMeans(n_clusters=self.n_clusters, n_init=10)
-        km.fit(X)
-        idx = km.labels_
-        centers = km.cluster_centers_
-        centers = centers.astype(np.float32)
-        idx = idx.astype(np.int32)
-        return idx
+                    for i in range(n_layers - 1, -1, -1):
+                        if i == n_layers - 1:
+                            Y = slim.fully_connected(H, self.hidden_neurons[i], scope='decoder_%d' % i)
+                            Y = slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
+                        else:
+                            Y = slim.fully_connected(Y, self.hidden_neurons[i], scope='decoder_%d' % i)
+                            if i != 0:
+                                Y =  slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
+        return H, Y
 
-    # def build_finetune_model(self):
-    # 	self.inputs = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'inputs')
-    # 	self.centers = tf.placeholder(tf.float32, [None, self.X.shape[1]], 'centers')
+    def build_model(self):
+        if self.mode == 'pretrain':
+            self._input = tf.placeholder(tf.float32, [None, self.X.shape[-1]], 'input_data')
+            self._fx, self._z = self.build_ae(self._input)
 
-    def finetune_loss(self, X, center, beta, lbd):
-        low_repre = self.hidden_representations(X)
-        temp = K.pow(center - low_repre, 2)
-        L = K.sum(temp, axis = 1)
+            ## loss and train
+            self.loss = tf.reduce_sum(tf.pow(self._input - self._z, 2), axis=1)
+            self.optimizer = tf.train.AdamOptimizer()
+            ae_vars = tf.trainable_variables()
+            self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=ae_vars)
 
-        # Add the network reconstruction error
-        z = self.ae(X)
-        reconst_err = K.sum(K.pow(X - z, 2), axis=1)
-        L = beta*L + lbd*reconst_err
+        elif self.mode == 'train':
+            self._input = tf.placeholder(tf.float32, [None, self.X.shape[-1]], 'input_data')
+            self._centroids = tf.placeholder(tf.float32, [None, self.hidden_neurons[-1]], 'centroids')
+            #self._centroids_idx = tf.placeholder(tf.float32, [None, self.n_clusters], 'clustering_idx')
 
-        cost = K.mean(L)
-        # reconst_cost = lbd*K.mean(reconst_err)
-        # cluster_cost = cost - reconst_cost
-        return cost
+            self._fx, self._z = self.build_ae(self._input)
+
+            ## loss
+            # clustering loss
+            #self._clustering_loss = tf.reduce_sum(tf.pow(self._fx - tf.matmul(self._centroids_idx, self._centroids), 2), axis = 1)
+            self._recont_loss = tf.reduce_sum(tf.pow(self._fx - self._centroids, 2), axis=1)
+            # reconstruction_loss
+            self._recont_loss = tf.reduce_sum(tf.pow(self._input - self._z, 2), axis = 1)
+            # total loss
+            self.loss = self.lbd*self._clustering_loss + self._recont_loss
+
+            ## Train
+            encoder_vars = tf.trainable_variables()
+            self.optimizer = tf.train.AdamOptimizer()
+            self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=encoder_vars)
+
+        elif self.mode == 'test':
+            self._input = tf.placeholder(tf.float32, [None, self.X.shape[-1]], 'input_data')
+            self._fx, self._z = self.build_ae(self._input)
 
     def init_cluster(self, data):
         km = KMeans(n_clusters=self.n_clusters, n_init=10)
@@ -118,65 +120,115 @@ class DeepClusteringNetwork(object):
         center_new.astype(np.float32)
         return idx, center_new, count
 
-    def train(self, optimizer, batch_size, epochs, beta, lbd, update_interval, save_dir, tol = 1e-3):
-        self.model.compile(optimizer = optimizer, loss = self.finetune_loss)
+    def train(self, batch_size, pre_epochs, finetune_epochs, update_interval, save_dir, tol=1e-3):
+        print '================================================='
+        print 'Pretraining AE...'
+        print '================================================='
 
-        print 'Initializing the cluster centers with k-means.'
-        hidden_array = self.hidden_representations(self.X)
-        y_pred, center = self.init_cluster(hidden_array)
-        count = 100*np.ones(self.n_clusters, dtype=np.int)
+        with tf.Session(config=self.config) as sess:
+            tf.global_variables_initializer().run()
+            saver = tf.train.Saver()
+            for step in range(pre_epochs + 1):
+                for minibatch_idx in xrange(int(self.X.shape[0] / batch_size)):
+                    batch_X = self.X[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])]
+                    feed_dict = {self._input: batch_X}
+                    sess.run(self.train_op, feed_dict)
 
-        n_batches = self.X.shape[0]/batch_size
-        index_array = np.arange(self.X.shape[0])
-        for ite in range(int(epochs)):
-            for minibatch_idx in xrange(n_batches):
-                center_tmp = center[y_pred[minibatch_idx * batch_size:
-                                    (minibatch_idx + 1) * batch_size]]
+                if (step + 1) % 10 == 0:
+                    l = sess.run(self.loss, feed_dict = {self._input:self.X})
+                    print '****************************************'
+                    print ('Step: [%d/%d] loss: %.6f' % (step + 1, pre_epochs, l))
 
-                idx_tmp = index_array[minibatch_idx * batch_size: min((minibatch_idx+1) * batch_size, self.X.shape[0])]
-                loss = self.model.train_on_batch(x=self.X[idx_tmp], center=center_tmp, beta = beta, lbd = lbd)
-                hidden_rep_tmp = self.hidden_representations(self.X[idx_tmp])
-                temp_y_pred, centers, count = self.batch_km(hidden_rep_tmp, centers, count)
-                y_pred[minibatch_idx * batch_size:
-                    (minibatch_idx + 1) * batch_size] = temp_y_pred
-                
-                ## check if empty cluster happen, if it does random initialize it
-                #for i in range(nClass):
-                #    if count_samples[i] == 0:
-                #        rand_idx = numpy.random.randint(low = 0, high = n_train_samples)
-                #        # modify the centroid
-                #        centers[i] = out_single(rand_idx)
+                if (step + 1) % pre_epochs == 0:
+                    self.pretrained_model =  os.path.join(save_dir, 'pretrain_model')
+                    saver.save(sess, self.pretrained_model)
+                    print '****************************************'
+                    print 'pretrained_model saved..!'
 
-            if ite % update_interval == 0:
-                hidden_array = self.hidden_representations(self.X)
-                y_pred_new, center = self.init_cluster(hidden_array)
-                for i in range(self.n_clusters):
-                    count[i] += y_pred_new.shape[0] - np.count_nonzero(y_pred_new - i)
+                    print '================================================='
+                    print 'Initializing the cluster centroids with k-means...'
+                    print '================================================='
+                    fx =  sess.run(self._fx, feed_dict = {self._input:self.X})
+                    self.y_pred, self.centroids = self.init_cluster(fx)
 
-                # evaluate the clustering performance
-                acc = np.round(metrics.acc(self.y, y_pred_new), 5)
-                nmi = np.round(metrics.nmi(self.y, y_pred_new), 5)
-                ari = np.round(metrics.ari(self.y, y_pred_new), 5)
-                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
+        print '================================================='
+        print 'Strat training...'
+        print '================================================='
+        self.mode = 'train'
+        self.build_model()
+        count = 100 * np.ones(self.n_clusters, dtype=np.int)
 
-                # check stop criterion
-                # delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / index_array.shape[0]
-                # y_pred = np.copy(y_pred_new)
-                # if ite > 0 and delta_label < tol:
-                #     print('delta_label ', delta_label, '< tol ', tol)
-                #     print('Reached tolerance threshold. Stopping training.')
-                #     break
+        with tf.Session(config=self.config) as sess:
+            tf.global_variables_initializer().run()
 
-        # save the trained model
-        print('saving model to:', save_dir + '/DCN_model_final.h5')
-        self.model.save_weights(save_dir + '/DCN_model_final.h5')
+            ## 'loading pretrained model...'
+            variables_to_restore = slim.get_model_variables(scope = ('encoder' and 'decoder'))
+            restorer = tf.train.Saver(variables_to_restore)
+            restorer.restore(sess, self.pretrained_model)
+            saver = tf.train.Saver()
+
+            # start training...
+            for step in range(finetune_epochs + 1):
+                for minibatch_idx in range(int(self.X.shape[0] / batch_size)):
+                    batch_centroids = self.centroids[self.y_pred[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])]]
+                    batch_X = self.X[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])]
+                    feed_dict = {self._input: batch_X, self._centroids:batch_centroids}
+                    sess.run(self.train_op, feed_dict)
+
+                    hidden_rep_tmp = sess.run(self._fx, feed_dict)
+                    temp_y_pred, self.centroids, count = self.batch_km(hidden_rep_tmp, self.centroids, count)
+                    self.y_pred[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])] = temp_y_pred
+
+                    # check if empty cluster happen, if it does random initialize it
+                    # for i in range(self.n_clusters):
+                    #    if count[i] == 0:
+                    #        rand_idx = numpy.random.randint(low = 0, high = n_train_samples)
+                    #        # modify the centroid
+                    #        centers[i] = out_single(rand_idx)
+
+                if step % update_interval == 0:
+                    hidden_array = sess.run(self._fx, feed_dict = {self._input: self.X, self._centroids:self.centroids[self.y_pred]})
+                    y_pred_new, self.centroids = self.init_cluster(hidden_array)
+                    for i in range(self.n_clusters):
+                        count[i] += y_pred_new.shape[0] - np.count_nonzero(y_pred_new - i)
+
+                    ## check stop criterion
+                    # delta_label = np.sum(self.y_pred != y_pred_new).astype(np.float32) / index_array.shape[0]
+                    # self.y_pred = np.copy(y_pred_new)
+                    # if ite > 0 and delta_label < tol:
+                    #     print('delta_label ', delta_label, '< tol ', tol)
+                    #     print('Reached tolerance threshold. Stopping training.')
+                    #     break
+
+                    # evaluate the clustering performance
+                    acc = np.round(metrics.acc(self.y, y_pred_new), 5)
+                    nmi = np.round(metrics.nmi(self.y, y_pred_new), 5)
+                    ari = np.round(metrics.ari(self.y, y_pred_new), 5)
+                    print '*********************************************'
+                    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (step, acc, nmi, ari))
+
+                if (step + 1) % finetune_epochs == 0:
+                    self.final_model = os.path.join(save_dir, 'final_model')
+                    saver.save(sess, self.final_model)
+                    print '****************************************'
+                    print 'pretrained_model saved..!'
+        return 0
+
+    def test(self, X_test, y_test):
+        print '================================================='
+        print 'Strat testing...'
+        print '================================================='
+        self.mode = 'test'
+        self.build_model()
+        with tf.Session(config=self.config) as sess:
+            saver = tf.train.Saver()
+            saver.restore(sess, self.final_model)
+            hidden_array = sess.run(self._fx, feed_dict={self._input: X_test})
+            y_pred, _ = self.init_cluster(hidden_array)
+            acc = np.round(metrics.acc(y_test, y_pred), 5)
+            nmi = np.round(metrics.nmi(y_test, y_pred), 5)
+            ari = np.round(metrics.ari(y_test, y_pred), 5)
+            print '****************************************'
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
         return y_pred
-
-    def evaluate(self):
-        y_pred = self.predict_classes(self.X)
-        acc = np.round(metrics.acc(self.y, y_pred), 5)
-        nmi = np.round(metrics.nmi(self.y, y_pred), 5)
-        ari = np.round(metrics.ari(self.y, y_pred), 5)
-        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-        return 0
