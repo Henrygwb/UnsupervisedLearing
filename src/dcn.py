@@ -118,7 +118,7 @@ class DeepClusteringNetwork(object):
         center_new.astype(np.float32)
         return idx, center_new, count
 
-    def train(self, optimizer, batch_size, epochs, beta, lbd, tol, update_interval, save_dir):
+    def train(self, optimizer, batch_size, epochs, beta, lbd, update_interval, save_dir, tol = 1e-3):
         self.model.compile(optimizer = optimizer, loss = self.finetune_loss)
 
         print 'Initializing the cluster centers with k-means.'
@@ -160,12 +160,12 @@ class DeepClusteringNetwork(object):
                 print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
                 # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / index_array.shape[0]
-                y_pred = np.copy(y_pred_new)
-                if ite > 0 and delta_label < tol:
-                    print('delta_label ', delta_label, '< tol ', tol)
-                    print('Reached tolerance threshold. Stopping training.')
-                    break
+                # delta_label = np.sum(y_pred != y_pred_new).astype(np.float32) / index_array.shape[0]
+                # y_pred = np.copy(y_pred_new)
+                # if ite > 0 and delta_label < tol:
+                #     print('delta_label ', delta_label, '< tol ', tol)
+                #     print('Reached tolerance threshold. Stopping training.')
+                #     break
 
         # save the trained model
         print('saving model to:', save_dir + '/DCN_model_final.h5')

@@ -25,6 +25,27 @@ if __name__ == "__main__":
     path = "../results/mnist"
     X, y = load_data(path, option=1)
     n_clusters = len(np.unique(y))
+
+    hidden_neurons = [X.shape[-1], 500, 500, 2000, 10]
+    batch = 256
+    #pre_epochs = 250
+    pre_epochs = 1
+
+    #fintune_epochs = 50
+    fintune_epochs = 10
+    beta = 1
+    lbd = 1
+    #update_interval = 10
+    update_interval = 2
+
+    dcn_test = DeepClusteringNetwork(X = X, y = y, hidden_neurons = hidden_neurons, n_clusters = n_clusters)
+    dcn_test.pretrain(batch_size = batch, epochs = pre_epochs, save_dir = path)
+    dcn_test.train(optimizer = 'adam', batch_size = batch, epochs = fintune_epochs, beta = beta, lbd = lbd,
+                   update_interval = update_interval, save_dir = path)
+    dcn_test.evaluate()
+
+
+    """
     n_bootstrep = 30
     num_samples = X.shape[0]
     bs_idx = genbssamples(n_bootstrep=n_bootstrep, num_samples=num_samples)
@@ -53,3 +74,4 @@ if __name__ == "__main__":
 
         pred_test = dec_test.test(X_test = X, y_test = y)
         io.savemat('bs_'+str(i), {'y_pred':pred_test})
+    """
