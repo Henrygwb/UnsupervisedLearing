@@ -32,7 +32,7 @@ if __name__ == "__main__":
     pre_epochs = 1
 
     #fintune_epochs = 50
-    fintune_epochs = 10
+    fintune_epochs = 5
     lbd = 1
     #update_interval = 10
     update_interval = 2
