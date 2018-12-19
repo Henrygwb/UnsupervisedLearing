@@ -147,7 +147,7 @@ class DeepClusteringNetwork(object):
                     if (step + 1) % 10 == 0:
                         l = sess.run(self.loss, feed_dict = {self._input:self.X})
                         print '****************************************'
-                        print ('Step: [%d/%d] loss: %.6f' % (step + 1, pre_epochs, l))
+                        print ('Step: [%d/%d] loss: %.6f' % (step + 1, pre_epochs, l[0]))
 
                     if (step + 1) % pre_epochs == 0:
                         self.pretrained_model =  os.path.join(save_dir, 'pretrain_model')
