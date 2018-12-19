@@ -8,7 +8,7 @@ from keras.layers import Dense, Dropout, Input
 from sklearn.cluster import KMeans
 from sklearn import metrics
 import pickle
-import progressbar
+from util import ProgressBar
 from time import sleep
 
 
@@ -132,10 +132,8 @@ class DeepEmbeddingClustering(object):
             #print self.model.layers[-1].clusters.get_value()
             if ite % update_interval == 0:
                 if ite != 0 :
-                    bar.finish()
-                bar = progressbar.ProgressBar(maxval=update_interval,
-                                              widgets=[progressbar.Bar('=', '[', ']'), ' ', progressbar.Percentage()])
-                bar.start()
+                    bar.done()
+                bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
 
                 q = self.model.predict(self.X, verbose=0)
                 p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
@@ -164,8 +162,8 @@ class DeepEmbeddingClustering(object):
             idx = index_array[index * batch_size: min((index+1) * batch_size, self.X.shape[0])]
             loss = self.model.train_on_batch(x=self.X[idx], y=p[idx])
             index = index + 1 if (index + 1) * batch_size <= self.X.shape[0] else 0
-            ite += 1
-            bar.update(ite%update_interval+1)
+            bar.current += 1
+            bar()
             sleep(0.1)
 
         # save the trained model
