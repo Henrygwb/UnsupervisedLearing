@@ -30,7 +30,7 @@ if __name__ == "__main__":
     n_bootstrep = 30
     num_samples = X.shape[0]
     bs_idx = genbssamples(n_bootstrep=n_bootstrep, num_samples=num_samples)
-    io.savemat('bs_idx', {'idx': bs_idx})
+    io.savemat(path+'/bs_idx', {'idx': bs_idx})
 
     for method in xrange(num_approaches):
         if method == 0:
