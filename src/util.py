@@ -38,8 +38,8 @@ def genbssamples(n_bootstrep, num_samples):
     """
     idx = np.zeros((n_bootstrep, num_samples))
     for i in xrange(n_bootstrep):
-        idx[i,:] = np.random.choice(num_samples, num_samples, replace=True).astype('int32')
-    return idx
+        idx[i,:] = np.random.choice(num_samples, num_samples, replace=True)
+    return idx.astype('int32')
 
 
 ##### clustering approach
