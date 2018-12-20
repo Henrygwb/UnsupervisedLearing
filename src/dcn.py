@@ -257,18 +257,19 @@ class DeepClusteringNetwork(object):
         print '================================================='
         print 'Strat testing...'
         print '================================================='
-        self.mode = 'test'
-        self.build_model()
-        with tf.Session(config=self.config) as sess:
-            saver = tf.train.Saver()
-            saver.restore(sess, self.final_model)
-            hidden_array = sess.run(self._fx, feed_dict={self._input: X_test})
-            y_pred, _ = self.init_cluster(hidden_array)
-            acc = np.round(metrics.acc(y_test, y_pred), 5)
-            nmi = np.round(metrics.nmi(y_test, y_pred), 5)
-            ari = np.round(metrics.ari(y_test, y_pred), 5)
-            print '****************************************'
-            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+        with tf.Graph().as_default() as test_graph:    
+            self.mode = 'test'
+            self.build_model()
+            with tf.Session(config=self.config, graph = test_graph) as sess:
+                saver = tf.train.Saver()
+                saver.restore(sess, self.final_model)
+                hidden_array = sess.run(self._fx, feed_dict={self._input: X_test})
+                y_pred, _ = self.init_cluster(hidden_array)
+                acc = np.round(metrics.acc(y_test, y_pred), 5)
+                nmi = np.round(metrics.nmi(y_test, y_pred), 5)
+                ari = np.round(metrics.ari(y_test, y_pred), 5)
+                print '****************************************'
+                print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
         return y_pred
 
