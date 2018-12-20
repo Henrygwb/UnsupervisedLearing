@@ -127,4 +127,4 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(X[0:10,], y[0:10,], n_clusters, n_bootstrep+1, bs_idx[:,0:10], 'dcn')
+    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, args.m)
