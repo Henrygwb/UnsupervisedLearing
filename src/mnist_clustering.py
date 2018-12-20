@@ -1,5 +1,5 @@
 import os
-os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=cuda,floatX=float32"
+os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
@@ -121,4 +121,4 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(X, y, n_clusters, n_bootstrep, bs_idx, args.m)
+    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, args.m)
