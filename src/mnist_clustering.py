@@ -81,7 +81,7 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
 
         hidden_neurons = [X.shape[-1], 500, 500, 2000, 10]
         batch = 256
-        pre_epochs = 10
+        pre_epochs = 250
         finetune_epochs = 50
         update_interval = 10
         lr = 0.005
