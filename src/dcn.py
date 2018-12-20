@@ -1,13 +1,12 @@
 import os
-import sys
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
-import scipy
 import numpy as np
 from sklearn.cluster import KMeans
-from sklearn import metrics
 from util import ProgressBar
 from time import sleep
+from util import metrics
+metrics = metrics()
 
 class DeepClusteringNetwork(object):
     def __init__(self, X, y, hidden_neurons, n_clusters, lbd, mode = 'pretrain', config = tf.ConfigProto()):
@@ -25,29 +24,29 @@ class DeepClusteringNetwork(object):
 
         with tf.variable_scope('encoder', reuse=reuse):
             with slim.arg_scope([slim.fully_connected], activation_fn=act, trainable= (self.mode == 'pretrain' or self.mode == 'train')):
-                with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain'or self.mode == 'train')):
+                # with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain'or self.mode == 'train')):
                     for i in range(n_layers):
                         if i == 0:
                             H = slim.fully_connected(input, self.hidden_neurons[i + 1], scope='encoder_%d' % (i + 1))
-                            H = slim.dropout(H, scope = 'encoder_dropout_%d' % (i + 1))
+                            # H = slim.dropout(H, scope = 'encoder_dropout_%d' % (i + 1))
                         else:
                             H = slim.fully_connected(H, self.hidden_neurons[i + 1], scope='encoder_%d' % (i + 1))
-                            if i != n_layers - 1:
-                                H = slim.dropout(H, scope='encoder_dropout_%d' % (i + 1))
+                            # if i != n_layers - 1:
+                            #     H = slim.dropout(H, scope='encoder_dropout_%d' % (i + 1))
 
         with tf.variable_scope('decoder', reuse=reuse):
             with slim.arg_scope([slim.fully_connected], activation_fn=act, trainable= (self.mode == 'pretrain' or self.mode == 'train')):
-                with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain' or self.mode == 'train')):
+                # with slim.arg_scope([slim.dropout], keep_prob = rate, is_training=(self.mode == 'pretrain' or self.mode == 'train')):
 
                     for i in range(n_layers - 1, -1, -1):
                         #print i
                         if i == n_layers - 1:
                             Y = slim.fully_connected(H, self.hidden_neurons[i], scope='decoder_%d' % i)
-                            Y = slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
+                            # Y = slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
                         else:
                             Y = slim.fully_connected(Y, self.hidden_neurons[i], scope='decoder_%d' % i)
-                            if i != 0:
-                                Y =  slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
+                            # if i != 0:
+                            #     Y =  slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
         return H, Y
 
     def build_model(self):
@@ -56,7 +55,7 @@ class DeepClusteringNetwork(object):
             self._fx, self._z = self.build_ae(self._input)
 
             ## loss and train
-            self.loss = tf.reduce_sum(tf.pow(self._input - self._z, 2), axis=1)
+            self.loss = tf.reduce_mean(tf.square(self._input - self._z))
             self.optimizer = tf.train.AdamOptimizer()
             ae_vars = tf.trainable_variables()
             self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=ae_vars)
@@ -66,14 +65,15 @@ class DeepClusteringNetwork(object):
             self._centroids = tf.placeholder(tf.float32, [None, self.hidden_neurons[-1]], 'centroids')
             #self._centroids_idx = tf.placeholder(tf.float32, [None, self.n_clusters], 'clustering_idx')
 
-            self._fx, self._z = self.build_ae(self._input, reuse = tf.AUTO_REUSE)
+            self._fx, self._z = self.build_ae(self._input, reuse = False)
 
             ## loss
             # clustering loss
-            #self._clustering_loss = tf.reduce_sum(tf.pow(self._fx - tf.matmul(self._centroids_idx, self._centroids), 2), axis = 1)
-            self._clustering_loss = tf.reduce_sum(tf.pow(self._fx - self._centroids, 2), axis=1)
+            # self._clustering_loss = tf.reduce_sum(tf.pow(self._fx - tf.matmul(self._centroids_idx, self._centroids), 2), axis = 1)
+            # self._clustering_loss = tf.reduce_sum(tf.pow(self._fx - self._centroids, 2), axis=1)
+            self._clustering_loss =  tf.reduce_mean(tf.square(self._fx - self._centroids))
             # reconstruction_loss
-            self._recont_loss = tf.reduce_sum(tf.pow(self._input - self._z, 2), axis = 1)
+            self._recont_loss = tf.reduce_mean(tf.square(self._input - self._z))
             # total loss
             self.loss = self.lbd*self._clustering_loss + self._recont_loss
 
@@ -121,45 +121,42 @@ class DeepClusteringNetwork(object):
         center_new.astype(np.float32)
         return idx, center_new, count
 
-    def train(self, batch_size, pre_epochs, finetune_epochs, update_interval, save_dir, cen_lr = 100, tol=1e-3):
-        print '================================================='
-        print 'Pretraining AE...'
-        print '================================================='
-        with tf.Graph().as_default() as pretrain_graph:
-            self.build_model()
-            with tf.Session(graph=pretrain_graph, config=self.config) as sess:
-                tf.global_variables_initializer().run()
-                saver = tf.train.Saver()
-                for step in range(pre_epochs):
-                    print '****************************************'
-                    print 'Iteration: %d.' %step
-                    num_batch = int(self.X.shape[0] / batch_size)
-                    bar = ProgressBar(num_batch, fmt = ProgressBar.FULL)
-                    for minibatch_idx in xrange(num_batch):
-                            batch_X = self.X[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])]
-                            feed_dict = {self._input: batch_X}
-                            sess.run(self.train_op, feed_dict)
-                            bar.current += 1
-                            bar()
-                            sleep(0.1)
-                    bar.done()
-
-                    if (step + 1) % 10 == 0:
-                        l = sess.run(self.loss, feed_dict = {self._input:self.X})
+    def train(self, batch_size, pre_epochs, finetune_epochs, update_interval, pre_save_dir, save_dir, pretrain, cen_lr = 100, tol=1e-3):
+        if pretrain == True:
+            print '================================================='
+            print 'Pretraining AE...'
+            print '================================================='
+            with tf.Graph().as_default() as pretrain_graph:
+                self.build_model()
+                with tf.Session(graph=pretrain_graph, config=self.config) as sess:
+                    tf.global_variables_initializer().run()
+                    saver = tf.train.Saver()
+                    for step in range(pre_epochs):
                         print '****************************************'
-                        print ('Step: [%d/%d] loss: %.6f' % (step + 1, pre_epochs, l[0]))
+                        print 'Iteration: %d.' %step
+                        num_batch = int(self.X.shape[0] / batch_size)
+                        bar = ProgressBar(num_batch, fmt = ProgressBar.FULL)
+                        for minibatch_idx in xrange(num_batch):
+                                batch_X = self.X[minibatch_idx * batch_size:min((minibatch_idx + 1) * batch_size, self.X.shape[0])]
+                                feed_dict = {self._input: batch_X}
+                                sess.run(self.train_op, feed_dict)
+                                bar.current += 1
+                                bar()
+                                sleep(0.1)
+                        bar.done()
 
-                    if (step + 1) % pre_epochs == 0:
-                        self.pretrained_model =  os.path.join(save_dir, 'pretrain_model')
-                        saver.save(sess, self.pretrained_model)
-                        print '****************************************'
-                        print 'pretrained_model saved..!'
+                        if (step + 1) % 10 == 0:
+                            l = sess.run(self.loss, feed_dict = {self._input:self.X})
+                            print '****************************************'
+                            print ('Step: [%d/%d] loss: %.6f' % (step + 1, pre_epochs, l[0]))
 
-                        print '================================================='
-                        print 'Initializing the cluster centroids with k-means...'
-                        print '================================================='
-                        fx =  sess.run(self._fx, feed_dict = {self._input:self.X})
-                        self.y_pred, self.centroids = self.init_cluster(fx)
+                        if (step + 1) % pre_epochs == 0:
+                            self.pretrained_model =  os.path.join(pre_save_dir, 'pretrain_model')
+                            saver.save(sess, self.pretrained_model)
+                            print '****************************************'
+                            print 'pretrained_model saved..!'
+        else:
+            self.pretrained_model = os.path.join(pre_save_dir, 'pretrain_model')
 
         print '================================================='
         print 'Strat training...'
@@ -177,6 +174,11 @@ class DeepClusteringNetwork(object):
                 #restorer = tf.train.Saver(variables_to_restore)
                 saver = tf.train.Saver()
                 saver.restore(sess, self.pretrained_model)
+                print '================================================='
+                print 'Initializing the cluster centroids with k-means...'
+                print '================================================='
+                fx = sess.run(self._fx, feed_dict={self._input: self.X})
+                self.y_pred, self.centroids = self.init_cluster(fx)
 
                 # start training...
                 for step in range(finetune_epochs):
@@ -222,9 +224,9 @@ class DeepClusteringNetwork(object):
                         #     break
 
                         # evaluate the clustering performance
-                        acc = np.round(metrics.accuracy_score(self.y, y_pred_new), 5)
-                        nmi = np.round(metrics.normalized_mutual_info_score(self.y, y_pred_new), 5)
-                        ari = np.round(metrics.adjusted_rand_score(self.y, y_pred_new), 5)
+                        acc = np.round(metrics.acc(self.y, y_pred_new), 5)
+                        nmi = np.round(metrics.nmi(self.y, y_pred_new), 5)
+                        ari = np.round(metrics.ari(self.y, y_pred_new), 5)
                         print '*********************************************'
                         print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (step, acc, nmi, ari))
 
@@ -246,9 +248,9 @@ class DeepClusteringNetwork(object):
             saver.restore(sess, self.final_model)
             hidden_array = sess.run(self._fx, feed_dict={self._input: X_test})
             y_pred, _ = self.init_cluster(hidden_array)
-            acc = np.round(metrics.accuracy_score(y_test, y_pred), 5)
-            nmi = np.round(metrics.normalized_mutual_info_score(y_test, y_pred), 5)
-            ari = np.round(metrics.adjusted_rand_score(y_test, y_pred), 5)
+            acc = np.round(metrics.acc(y_test, y_pred), 5)
+            nmi = np.round(metrics.nmi(y_test, y_pred), 5)
+            ari = np.round(metrics.ari(y_test, y_pred), 5)
             print '****************************************'
             print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 

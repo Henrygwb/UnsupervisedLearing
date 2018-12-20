@@ -1,5 +1,6 @@
 import os
-os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
+#os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
@@ -83,9 +84,17 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
         pre_epochs = 250
         finetune_epochs = 50
         update_interval = 10
+
+        # pre_epochs = 250
+        # finetune_epochs = 50
+        # update_interval = 10
         lbd = 1
 
         for i in xrange(n_bootstrep):
+            if i == 0:
+                pretrain = True
+            else:
+                pretrain = False
             print '********************************'
             print '********************************'
             print '********************************'
@@ -98,9 +107,9 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
                 os.system('mkdir '+dir_path)
             X_bs = X[bs_idx[i,:]]
             y_bs = y[bs_idx[i,:]]
-            dcn_test = DeepClusteringNetwork(X=X, y=y, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
+            dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
             dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,
-                           update_interval=update_interval, save_dir=dir_path)
+                           update_interval=update_interval, pre_save_dir=path_dcn, save_dir=dir_path, pretrain = pretrain)
             pred_test = dcn_test.test(X, y)
             io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
     return 0
@@ -121,4 +130,4 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, args.m)
+    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, 'dcn')
