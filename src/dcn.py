@@ -162,8 +162,6 @@ class DeepClusteringNetwork(object):
 
         else:
             self.pretrained_model = os.path.join(pre_save_dir, 'pretrain_model')
-
-        print '================================================='
         print 'Strat training...'
         print '================================================='
         with tf.Graph().as_default() as finetune_graph:
@@ -172,15 +170,18 @@ class DeepClusteringNetwork(object):
             count =  cen_lr*np.ones(self.n_clusters, dtype=np.int) # learning rate for each centroid
             count_sample = np.zeros(self.n_clusters, dtype=np.int)
             with tf.Session(config=self.config, graph=finetune_graph) as sess:
-                #tf.global_variables_initializer().run()
+                tf.global_variables_initializer().run()
 
                 ## 'loading pretrained model...'
-                #variables_to_restore = slim.get_model_variables(scope = ('encoder' and 'decoder'))
-                #restorer = tf.train.Saver(variables_to_restore)
+                variables_to_restore = slim.get_model_variables()
+	
+                restorer = tf.train.Saver(variables_to_restore)
+		restorer.restore(sess, self.pretrained_model)
                 saver = tf.train.Saver()
-                saver.restore(sess, self.pretrained_model)
+                #saver.restore(sess, self.pretrained_model)
 
                 recon_l = sess.run(self._recont_loss, feed_dict={self._input: self.X})
+		print recon_l 
                 print '****************************************'
                 print ('Reconstruction loss: %.6f' % (recon_l))
 
