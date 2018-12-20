@@ -9,6 +9,7 @@ from sklearn.cluster import KMeans
 from util import metrics
 from util import ProgressBar
 from time import sleep
+from keras.optimizers import SGD
 
 metrics = metrics()
 
@@ -88,7 +89,7 @@ class DeepEmbeddingClustering(object):
         self.ae = build_ae(hidden_neurons)
 
     def pretrain(self, batch_size, epochs, save_dir):
-        self.ae.compile(optimizer='adam', loss = 'mse')
+        self.ae.compile(optimizer=SGD(lr=1, momentum=0.9), loss = 'mse')
         self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=0)
         self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)

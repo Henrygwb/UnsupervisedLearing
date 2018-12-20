@@ -56,7 +56,7 @@ class DeepClusteringNetwork(object):
 
             ## loss and train
             self.loss = tf.reduce_mean(tf.square(self._input - self._z))
-            self.optimizer = tf.train.AdamOptimizer()
+            self.optimizer = tf.train.MomentumOptimizer(learning_rate=1, momentum=0.9)
             ae_vars = tf.trainable_variables()
             self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=ae_vars)
 
@@ -78,9 +78,9 @@ class DeepClusteringNetwork(object):
             self.loss = self.lbd*self._clustering_loss + self._recont_loss
 
             ## Train
-            ae_vars = tf.trainable_variables(learning_rate = lr)
-            self.optimizer = tf.train.AdamOptimizer()
-            self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=ae_vars, )
+            ae_vars = tf.trainable_variables()
+            self.optimizer = tf.train.AdamOptimizer(learning_rate = lr)
+            self.train_op = slim.learning.create_train_op(self.loss, self.optimizer, variables_to_train=ae_vars)
 
         elif self.mode == 'test':
             self._input = tf.placeholder(tf.float32, [None, self.X.shape[-1]], 'input_data')
