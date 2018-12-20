@@ -19,7 +19,7 @@ def load_data(path):
     y = np.array([np.where(r == 1)[0][0] for r in y])
     return X, y
 
-def clustering(method):
+def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
     if method == 'dec':
         print '================================'
         print '================================'
@@ -111,7 +111,7 @@ if __name__ == "__main__":
     path = "../results/mnist"
     X, y = load_data(path)
     n_clusters = len(np.unique(y))
-    n_bootstrep = 1
+    n_bootstrep = 10
     num_samples = X.shape[0]
     bs_idx = genbssamples(n_bootstrep=n_bootstrep, num_samples=num_samples)
     bs_idx = np.concatenate((np.arange(X.shape[0]).reshape(1, X.shape[0]), bs_idx))
@@ -121,4 +121,4 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(args.m)
+    clustering(X, y, n_clusters, n_bootstrep, bs_idx, args.m)
