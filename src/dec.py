@@ -3,14 +3,14 @@ import sys
 import numpy as np
 import keras.backend as K
 from keras.engine.topology import Layer, InputSpec
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.layers import Dense, Dropout, Input
 from sklearn.cluster import KMeans
-from sklearn import metrics
-import pickle
+from util import metrics
 from util import ProgressBar
 from time import sleep
 
+metrics = metrics()
 
 def build_ae(hidden_neurons, rate = 0.5, act='relu'):
     n_layers = len(hidden_neurons) - 1
@@ -19,23 +19,23 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
     for i in range(n_layers):
         if i == 0:
             H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
-            H = Dropout(rate)(H)
+            # H = Dropout(rate)(H)
         else:
             H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
-            if i != 3:
-                H = Dropout(rate)(H)
+            # if i != 3:
+            #     H = Dropout(rate)(H)
 
     for i in range(n_layers-1, -1, -1):
         if i == n_layers-1:
             Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(H)
-            Y = Dropout(rate)(Y)
+            # Y = Dropout(rate)(Y)
 
         else:
             Y = Dense(hidden_neurons[i], activation=act, name='decoder_%d' % i)(Y)
-            if i != 0:
-                Y = Dropout(rate)(Y)
+            # if i != 0:
+            #     Y = Dropout(rate)(Y)
 
-    return Model(inputs=X, outputs=Y, name='AE'), Model(inputs=X, outputs=H, name='encoder')
+    return Model(inputs=X, outputs=Y, name='AE')
 
 
 class ClusteringLayer(Layer):
@@ -83,21 +83,15 @@ class DeepEmbeddingClustering(object):
         self.X = X
         self.y = y
         self.n_clusters = n_clusters
+        self.hidden_neurons = hidden_neurons
         self.input_dim = hidden_neurons[0]
-        self.ae, self.encoder = build_ae(hidden_neurons)
-        print self.ae.summary()
-        print self.encoder.summary()
-        cluster_layer = ClusteringLayer(self.n_clusters,name='clustering')(self.encoder.output)
-        self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
+        self.ae = build_ae(hidden_neurons)
 
     def pretrain(self, batch_size, epochs, save_dir):
         self.ae.compile(optimizer='adam', loss = 'mse')
-        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs)
+        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=0)
         self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)
-
-    def load_model(self, weights):
-        self.model.load_weights(weights)
 
     def hidden_representations(self, X):
         return self.encoder.predict(X)
@@ -110,7 +104,19 @@ class DeepEmbeddingClustering(object):
         p = q ** 2 / q.sum(0)
         return (p.T / p.sum(1)).T
 
-    def train(self, optimizer, batch_size, epochs, tol, update_interval, save_dir, shuffle):
+    def train(self, optimizer, batch_size, pre_epochs, epochs, tol, update_interval, pre_save_dir, save_dir, shuffle,
+              pretrain = False):
+        if pretrain == False:
+            self.ae = load_model(os.path.join(pre_save_dir, 'pretrained_ae.h5'))
+            # self.ae.load_weights('../results/mnist/dec_16/ae_weights.h5')
+        else:
+            self.pretrain(batch_size = batch_size, epochs = pre_epochs, save_dir = pre_save_dir)
+        self.encoder = Model(self.ae.input, self.ae.get_layer('encoder_' + str(len(self.hidden_neurons) - 1)).output)
+        self.encoder.compile(optimizer='adam', loss='mse')
+
+        cluster_layer = ClusteringLayer(self.n_clusters,name='clustering')(self.encoder.output)
+        self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
+
         self.model.compile(optimizer = optimizer, loss = 'kld')
         print '================================================='
         print 'Initializing the cluster centers with k-means...'
@@ -140,12 +146,12 @@ class DeepEmbeddingClustering(object):
 
                 # evaluate the clustering performance
                 y_pred = q.argmax(1)
-                acc = np.round(metrics.accuracy_score(self.y, y_pred), 5)
-                nmi = np.round(metrics.normalized_mutual_info_score(self.y, y_pred), 5)
-                ari = np.round(metrics.adjusted_rand_score(self.y, y_pred), 5)
+                acc = np.round(metrics.acc(self.y, y_pred), 5)
+                nmi = np.round(metrics.nmi(self.y, y_pred), 5)
+                ari = np.round(metrics.ari(self.y, y_pred), 5)
                 loss = np.round(loss, 5)
                 print '****************************************'
-                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari), ' ; loss=', loss)
+                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
 
                 # check stop criterion
                 delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
@@ -177,9 +183,9 @@ class DeepEmbeddingClustering(object):
 
     def evaluate(self):
         y_pred = self.predict_classes(self.X)
-        acc = np.round(metrics.accuracy_score(self.y, y_pred), 5)
-        nmi = np.round(metrics.normalized_mutual_info_score(self.y, y_pred), 5)
-        ari = np.round(metrics.adjusted_rand_score(self.y, y_pred), 5)
+        acc = np.round(metrics.acc(self.y, y_pred), 5)
+        nmi = np.round(metrics.nmi(self.y, y_pred), 5)
+        ari = np.round(metrics.ari(self.y, y_pred), 5)
         print '================================================='
         print 'Start evaluate ...'
         print '================================================='
@@ -191,8 +197,8 @@ class DeepEmbeddingClustering(object):
         print 'Start evaluate ...'
         print '================================================='
         y_pred = self.predict_classes(X_test)
-        acc = np.round(metrics.accuracy_score(y_test, y_pred), 5)
-        nmi = np.round(metrics.normalized_mutual_info_score(y_test, y_pred), 5)
-        ari = np.round(metrics.adjusted_rand_score(y_test, y_pred), 5)
+        acc = np.round(metrics.acc(y_test, y_pred), 5)
+        nmi = np.round(metrics.nmi(y_test, y_pred), 5)
+        ari = np.round(metrics.ari(y_test, y_pred), 5)
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return y_pred
