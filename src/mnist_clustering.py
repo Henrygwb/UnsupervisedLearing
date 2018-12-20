@@ -81,13 +81,10 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
 
         hidden_neurons = [X.shape[-1], 500, 500, 2000, 10]
         batch = 256
-        pre_epochs = 250
+        pre_epochs = 10
         finetune_epochs = 50
         update_interval = 10
-
-        # pre_epochs = 250
-        # finetune_epochs = 50
-        # update_interval = 10
+        lr = 0.005
         lbd = 1
 
         for i in xrange(n_bootstrep):
@@ -108,8 +105,8 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
             X_bs = X[bs_idx[i,:]]
             y_bs = y[bs_idx[i,:]]
             dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
-            dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,
-                           update_interval=update_interval, pre_save_dir=path_dcn, save_dir=dir_path, pretrain = pretrain)
+            dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,update_interval=update_interval,
+                           pre_save_dir=path_dcn, save_dir=dir_path, lr=lr, pretrain = pretrain)
             pred_test = dcn_test.test(X, y)
             io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
     return 0
@@ -130,4 +127,4 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, 'dcn')
+    clustering(X[0:10,], y[0:10,], n_clusters, n_bootstrep+1, bs_idx[:,0:10], 'dcn')
