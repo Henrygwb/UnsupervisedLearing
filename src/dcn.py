@@ -49,7 +49,7 @@ class DeepClusteringNetwork(object):
                             #     Y =  slim.dropout(Y, scope='decoder_dropout_%d' % (i + 1))
         return H, Y
 
-    def build_model(self, lr = 0.005):
+    def build_model(self, lr = 0.001):
         if self.mode == 'pretrain':
             self._input = tf.placeholder(tf.float32, [None, self.X.shape[-1]], 'input_data')
             self._fx, self._z = self.build_ae(self._input)
@@ -246,7 +246,7 @@ class DeepClusteringNetwork(object):
                         self.final_model = os.path.join(save_dir, 'final_model')
                         saver.save(sess, self.final_model)
                         print '****************************************'
-                        print 'pretrained_model saved..!'
+                        print 'finetune_model saved..!'
                     bar.current += 1
                     bar()
                     sleep(0.1)
