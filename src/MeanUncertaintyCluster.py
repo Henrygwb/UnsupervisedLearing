@@ -1,4 +1,5 @@
 import os
+import shutil
 import numpy as np
 import collections
 from sklearn.preprocessing import OneHotEncoder
@@ -9,11 +10,11 @@ from util import metrics
 metrics = metrics()
 
 class MeanClustering(object):
-    def __init__(self, y, yb, n_bootstrap):
+    def __init__(self, y, yb, n_boostrap):
         self.y = y.astype('int')
         self.n = y.shape[0]
         self.yb = yb.astype('int')
-        self.n_boostrap = n_bootstrap
+        self.n_boostrap = n_boostrap
 
     def match(self, jaccard_dist, q1, q2, nc_1, nc_2):
         """
@@ -214,6 +215,78 @@ class MeanClustering(object):
 
         return y_mean
 
+    def align_bs(self, folder="align"):
+        """
+        Align bootstrap samples
+        :param: folder: working folder
+        :return: idx: index of reference partition
+        """
+        os.chdir("package5")
+        if os.path.exists(folder) == False:
+            os.mkdir(folder)
+        shutil.copy2("labelsw_bunch2", os.path.join(folder, "labelsw_bunch2"))
+        os.chdir(folder)
+        yb_stack = self.yb.flatten()
+        rfcls = np.zeros(self.n)
+        ybcls = np.hstack((rfcls, yb_stack))
+        np.savetxt("zb.cls", ybcls, fmt='%d')
+        cmd = './labelsw_bunch2 -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b ' + str(self.n_boostrap + 1) + ' -2'
+        os.system(cmd + ' > tmp')
+        idx = int(open('tmp', 'r').read())
+        os.remove('tmp')
+        os.chdir("..")
+        os.chdir("..")
+        print os.getcwd()
+        return idx
+
+    def get_mean(self, idx, threshold = 0.8, alpha = 0.1):
+        """
+        Find representative samples
+        :param: idx: index of reference partition
+        :return: y_mean: mean_partition
+        """
+        yb_stack = self.yb.flatten()
+        k_rf = max(yb_stack[(self.n * idx):(self.n * (idx+1))])+1
+        os.chdir("package5")
+
+        rfcls = yb_stack[(self.n * idx):(self.n * (idx+1))]
+        ybcls = np.hstack((rfcls, yb_stack))
+        np.savetxt("zb.cls", ybcls, fmt='%d')
+
+        cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(self.n_boostrap + 1) + \
+              " -t "+ str(threshold) +  " -a " + str(alpha) + " -2"
+        os.system(cmd)
+        dist = np.loadtxt("zb.par")
+        wt = np.loadtxt("zb.wt")
+
+        os.chdir("..")
+        m = dist[:,0].astype('int')
+        p_raw = []
+        for i in xrange(self.n_boostrap):
+            p_raw.append(OneHotEncoder().fit_transform(self.yb[0, self.n*i:self.n*(i+1)].reshape(self.n, 1)))
+
+        p_tild = np.zeros((self.n, k_rf*self.n_boostrap))
+        p_tild_sum = np.zeros((self.n, k_rf))
+
+        for i in xrange(self.n_boostrap):
+            wt_sub = wt[(sum(m[0:i])):sum(m[0:i+1]),]
+            wt_row_sums = wt_sub.sum(axis=1)
+            wt_row_sums[np.where(wt_row_sums) == 0 ] = 1
+            wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
+            p_tild = np.matmul(p_raw[i].toarray(), wt_sub)
+            p_tild_sum = p_tild_sum + p_tild
+
+        p_bar = p_tild_sum / self.n_boostrap
+        y_mean = np.argmax(p_bar, axis=1)
+
+        acc = np.round(metrics.acc(self.y, y_mean), 5)
+        nmi = np.round(metrics.nmi(self.y, y_mean), 5)
+        ari = np.round(metrics.ari(self.y, y_mean), 5)
+        print '****************************************'
+        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+
+        return y_mean
+
 
 class ClusterAnalysis(MeanClustering):
     def __init__(self, threshold = 0.8, alpha = 0.1, **kwargs):
@@ -275,73 +348,3 @@ if __name__  == '__main__':
     y_mean = ota_test.get_repre(idx)
 """
     ######## call c package
-    # def align_bs(self, folder="align"):
-    #     """
-    #     Align bootstrap samples
-    #     :return:
-    #     """
-    #     os.chdir("package5")
-    #     if os.path.exists(folder) == False:
-    #         os.mkdir(folder)
-    #     shutil.copy2("labelsw_bunch2", os.path.join(folder, "labelsw_bunch2"))
-    #     os.chdir(folder)
-    #     yb_stack = self.yb.flatten()
-    #     rfcls = np.zeros(self.n)
-    #     ybcls = np.hstack((rfcls, yb_stack))
-    #     np.savetxt("zb.cls", ybcls, fmt='%d')
-    #     cmd = './labelsw_bunch2 -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b ' + str(self.n_bootstrap + 1) + ' -2'
-    #     os.system(cmd + ' > tmp')
-    #     idx = int(open('tmp', 'r').read())
-    #     os.remove('tmp')
-    #     os.chdir("..")
-    #     os.chdir("..")
-    #     print os.getcwd()
-    #     return idx
-    #
-    #
-    # def get_repre(self, idx, threshold = 0.8, alpha = 0.1, double = False):
-    #     """
-    #     Find representative samples
-    #     :return:
-    #     """
-    #     yb_stack = self.yb.flatten()
-    #     k_rf = max(yb_stack[(self.n * idx):(self.n * (idx+1))])+1
-    #     os.chdir("package5")
-    #
-    #     rfcls = yb_stack[(self.n * idx):(self.n * (idx+1))]
-    #     ybcls = np.hstack((rfcls, yb_stack))
-    #     np.savetxt("zb.cls", ybcls, fmt='%d')
-    #
-    #     cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(self.n_bootstrap + 1) + \
-    #           " -t "+ str(threshold) +  " -a " + str(alpha) + " -2"
-    #     os.system(cmd)
-    #     dist = np.loadtxt("zb.par")
-    #     wt = np.loadtxt("zb.wt")
-    #
-    #     os.chdir("..")
-    #     m = dist[:,0].astype('int')
-    #     p_raw = []
-    #     for i in xrange(self.n_bootstrap):
-    #         p_raw.append(OneHotEncoder().fit_transform(self.yb[0, self.n*i:self.n*(i+1)].reshape(self.n, 1)))
-    #
-    #     p_tild = np.zeros((self.n, k_rf*self.n_bootstrap))
-    #     p_tild_sum = np.zeros((self.n, k_rf))
-    #
-    #     for i in xrange(self.n_bootstrap):
-    #         wt_sub = wt[(sum(m[0:i])):sum(m[0:i+1]),]
-    #         wt_row_sums = wt_sub.sum(axis=1)
-    #         wt_row_sums[np.where(wt_row_sums) == 0 ] = 1
-    #         wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
-    #         p_tild = np.matmul(p_raw[i].toarray(), wt_sub)
-    #         p_tild_sum = p_tild_sum + p_tild
-    #
-    #     p_bar = p_tild_sum / self.n_bootstrap
-    #     p_bar_hrd_asgn = np.argmax(p_bar, axis=1)
-    #
-    #     acc = np.round(metrics.acc(self.y, p_bar_hrd_asgn), 5)
-    #     nmi = np.round(metrics.nmi(self.y, p_bar_hrd_asgn), 5)
-    #     ari = np.round(metrics.ari(self.y, p_bar_hrd_asgn), 5)
-    #     print '****************************************'
-    #     print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    #
-    #     return p_bar_hrd_asgn
