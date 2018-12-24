@@ -294,19 +294,31 @@ class ClusterAnalysis(MeanClustering):
         self.thred = threshold
         self.alpha = alpha
 
+    def entropy(self, dist, metric = 'mean'):
+        """
+        Overall clustering stability
+        :return: p_mean, stability of the partition
+        """
+        if metric == 'mean':
+            p_mean = np.mean(dist)
+        elif metric == 'entropy':
+            std = np.std(dist)
+            cate = round(dist/std)
+            idx, count = np.unique(cate, return_counts=True)
+            px = count/float(sum(count))
+            lpx = np.log2(px)
+            p_mean = -sum(px*lpx)
+        return p_mean
+
     def statforclst(self):
         """
         Statistics for stability of a result of clustering
         :return:
         """
+        
         return 0
 
-    def entropy(self):
-        """
-        Overall clustering stability
-        :return:
-        """
-        return 0
+
 
     def confset(self):
         """
