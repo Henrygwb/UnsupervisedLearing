@@ -3,7 +3,6 @@ import shutil
 import numpy as np
 import collections
 from sklearn.preprocessing import OneHotEncoder
-from mnist_clustering import load_data
 from scipy import io
 from scipy.optimize import linprog
 from util import metrics
@@ -84,13 +83,19 @@ class MeanClustering(object):
         q1 = np.zeros((nc_tmp))
         count_1 = collections.Counter(y_tmp)
         for i in xrange(nc_tmp):
-            q1[i] = float(count_1[i])/y_tmp.shape[0]
+            if i in count_1.keys():
+                q1[i] = float(count_1[i])/y_tmp.shape[0]
+            else:
+                q1[i] = 0
         # print q1
 
         q2 = np.zeros((nc_ref))
         count_2 = collections.Counter(y_ref)
         for i in xrange(nc_ref):
-            q2[i] = float(count_2[i]) / y_ref.shape[0]
+            if i in count_1.keys():
+                q2[i] = float(count_2[i]) / y_ref.shape[0]
+            else:
+                q2[i] = 0
         # print q2
 
         mdist, wt_tmp = self.match(jaccard_dist, q1, q2, nc_tmp, nc_ref)
@@ -288,13 +293,183 @@ class MeanClustering(object):
         return y_mean
 
 
-class ClusterAnalysis(MeanClustering):
-    def __init__(self, threshold = 0.8, alpha = 0.1, **kwargs):
-        super(MeanClustering, self).__init__(**kwargs)
-        self.thred = threshold
-        self.alpha = alpha
+class ClusterAnalysis(object):
+    def __init__(self, yb, n_boostrap):
+        self.yb = yb
+        self.n_boostrap = n_boostrap
 
-    def entropy(self, dist, metric = 'mean'):
+    def covercmp(self, wt_tmp, wt_ref, n_tmp, threshold):
+        """
+        :param wt_tmp: one column of the raw-normalized wt
+        :param wt_ref: one column of the column-normalized wt
+        :param n_tmp: num of raws in wt_tmp and wt_ref
+        :param thredshold: threshold fro match
+        :return: n: number of clusters(raw) of wt_tmp that > threshold
+        :return: m: argmax(wt_ref[wt_tmp > threshold])
+        :return: v2: max(wt_ref[wt_tmp > threshold])
+        """
+        """
+        n = 0
+        m = 0
+        v1 = v2 = 0
+        for i in xrange(n_tmp):
+            if wt_tmp[i] > threshold:
+                n += 1
+                v1 += wt_ref[i]
+                if wt_ref[i] > v2:
+                    v2 = wt_ref[i]
+                    m = i
+        """
+        n = 0
+        m = 0
+        v1 = 0
+        v2 = 0
+        cov = np.zeros((n_tmp,)) - 1
+        n = np.where(wt_tmp>threshold)[0].shape[0]
+        if n != 0:
+            v1 = sum(wt_ref[wt_tmp>threshold])
+            m = np.where(wt_tmp>threshold)[0][np.argmax(wt_ref[wt_tmp>threshold])]
+            v2 = max(wt_ref[wt_tmp>threshold])
+
+            cov[wt_tmp>threshold] = wt_ref[wt_tmp>threshold]
+        return n, m, v1, v2, cov
+
+    def access(self, wt_sub, n_tmp, n_rf, threshold):
+        """
+        :param wt_sub: weight
+        :param n_tmp: num of cluster
+        :param n_rf: num of cluster in reference
+        :param threshold:
+        :return: topological relationship
+        """
+        wt_sub_raw = np.copy(wt_sub.reshape((n_tmp, n_rf)))
+        wt_sub_raw_sum = np.sum(wt_sub_raw, axis=1)
+        for i in xrange(n_tmp):
+            wt_sub_raw[i,] = wt_sub_raw[i,]/wt_sub_raw_sum[i]
+
+        wt_sub_col = np.copy(wt_sub.reshape((n_tmp, n_rf)))
+        wt_sub_col_sum = np.sum(wt_sub_col, axis=0)
+        for j in xrange(n_rf):
+            wt_sub_col[:,j] = wt_sub_col[:,j]/wt_sub_col_sum[j]
+
+
+        code = np.zeros((n_rf, ))
+        nf = np.zeros((n_rf, ))
+        res_ = np.zeros((n_tmp,n_rf))
+        coverage = np.zeros((max(n_tmp, n_rf), ))
+
+        for i in xrange(n_rf):
+            wtcmp = wt_sub_raw[:, i]
+            wtref = wt_sub_col[:, i]
+            n,m,v1,v2, cov = self.covercmp(wtcmp, wtref, n_tmp, threshold)
+            res_[:,i] = cov
+            nf[i] = n
+            if v2 > threshold:
+                code[i] = 0
+            elif v1 > threshold:
+                    code[i] = 1
+            else:
+                v3 = max(wtref)
+                m = np.argmax(wtref)
+                res_[:,i] = -1
+                if v3 > threshold:
+                    _, nf[i], v4, v5, cov= self.covercmp(wt_sub_col[m, :], wt_sub_raw[m,:], n_rf, threshold)
+                    if v4 > threshold:
+                        code[i] = 2
+                        res_[m, i] = cov[i] + 2
+                    else:
+                        code[i] = 3
+                        nf[i] = 0
+                else:
+                    code[i] = 3
+                    nf[i] = 0
+        return code, nf, res_.flatten()
+
+    def matchsplit(self, y_mean = None, wt = None, clsct = None, threshold = 0.8):
+        """
+        :param y_mean: mean partition
+        :param wt: weight
+        :param clsct: mun of clusters
+        :param threshold:
+        :return: topological relationship
+        """
+
+        if y_mean != None:
+            wt, clsct, _  = self.align(self.yb, y_mean)
+        k_rf = wt.shape[0]/sum(clsct)
+        clsct = clsct.astype('int')
+
+        codect = np.zeros((k_rf, 4))
+        nfave = np.zeros((k_rf, 4))
+        res = np.zeros((sum(clsct)*k_rf, ))
+
+        m = 0
+        for i in xrange(self.n_boostrap):
+            code, nf, res[m:m+k_rf*clsct[i],] = self.access(wt[m:m+k_rf*clsct[i],], clsct[i], k_rf, threshold)
+            code = code.astype('int')
+            for j in xrange(k_rf):
+                codect[j, code[j]] += 1
+                nfave[j, code[j]] += nf[j]
+            m += k_rf*clsct[i]
+        nfave = nfave/codect
+        nfave[np.isnan(nfave)] = 0
+        
+        return codect, nfave, res
+
+    def hardassign(self):
+        """
+        hard assignment of topological relationship
+        :return:
+        """
+
+        return 0
+
+    def confset(self, c):
+        """
+        Confident set
+        :return:
+        """
+        return 0
+
+    def clu_stablity(self, s_confset, s):
+        """
+        :param s_confset: confit set of the cluster
+        :param s: a collection of mathched clusters
+        :return: atr: average tightness ratio; acr: average coverage ratio.
+        """
+        atr = []
+        acr = []
+        conf_len = float(s_confset.shape[0])
+        m1 = 0
+        m2 = 0
+        for i in xrange(len(s)):
+            s_tmp = s[i]
+            s_ist_tmp = np.intersect1d(s_tmp, s_confset)
+            if np.count_nonzero((s_ist_tmp - s_tmp)) == 0 :
+                m1 += 1
+                atr.append(s_tmp.shape[0] / conf_len)
+            else:
+                m2 += 1
+                acr.append(s_ist_tmp.shape[0] / float(s_tmp.shape[0]))
+        atr = sum(atr)/m1
+        acr = sum(acr)/m2
+        return atr, acr
+
+    def clu_dist(self, y, i, j):
+        """
+        :param y: cluster result
+        :param i: ith cluster
+        :param j: jth cluster
+        :return: cap_i_j clusuter alignment and points based separability between i and j
+        """
+        c_i = y[y==i]
+        c_j = y[y==j]
+        s_i = self.confset(c_i)
+        s_j = self.confset(c_j)
+        cap_i_j = metrics.jac(s_i, s_j)
+        return cap_i_j
+
+    def par_stablity(self, dist, metric = 'mean'):
         """
         Overall clustering stability
         :return: p_mean, stability of the partition
@@ -310,23 +485,6 @@ class ClusterAnalysis(MeanClustering):
             p_mean = -sum(px*lpx)
         return p_mean
 
-    def statforclst(self):
-        """
-        Statistics for stability of a result of clustering
-        :return:
-        """
-        
-        return 0
-
-
-
-    def confset(self):
-        """
-        Confident set
-        :return:
-        """
-        return 0
-
 
 if __name__  == '__main__':
     n_bs = 10
@@ -334,8 +492,15 @@ if __name__  == '__main__':
     yb = np.genfromtxt('zb.cls')[5000:]
     y = yb[0*n_sample:1*n_sample]
     mean_test = MeanClustering(y, yb, n_bs)
-    y_mean = mean_test.ota()
-    y_mean = mean_test.ota_costly()
+    #y_mean = mean_test.ota()
+    #y_mean = mean_test.ota_costly()
+    wt = np.genfromtxt('zb.wt').flatten()
+    res_ref = np.genfromtxt('zb.ls')
+    clst = np.array([4,4,4,4,4,4,4,4,4,4])
+    ca_test = ClusterAnalysis(yb, n_bs)
+    codect, nfave, res = ca_test.matchsplit(wt=wt, clsct=clst)
+    res = np.round(res, 4).reshape(40,4)
+    print np.count_nonzero(res-res_ref)
 
 """
     X, y = load_data("../results/mnist")
