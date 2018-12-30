@@ -1,4 +1,4 @@
-# EnsembleClustering
+# Ensemble clustering approach and uncertainty analysis
 
 - DL based clustering approach
   - DEC: https://github.com/piiswrong/dec 
