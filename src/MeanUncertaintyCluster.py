@@ -9,6 +9,7 @@ from util import metrics
 metrics = metrics()
 import math
 
+
 class MeanClustering(object):
     def __init__(self, y, yb, n_boostrap):
         self.y = y.astype('int')
@@ -295,10 +296,10 @@ class MeanClustering(object):
 
 
 class ClusterAnalysis(object):
-    def __init__(self, yb, n_boostrap, y_mean):
-        self.yb = yb
-        self.n_boostrap = n_boostrap
+    def __init__(self, yb, n_boostrap, y_mean, len):
         self.y_mean = y_mean
+        self.yb = yb.reshape(n_boostrap, len)
+        self.n_boostrap = n_boostrap
 
     def covercmp(self, wt_tmp, wt_ref, n_tmp, threshold):
         """
@@ -426,8 +427,8 @@ class ClusterAnalysis(object):
     def matchcluster(self, res, clsct, threshold = 0.8, usesplit = False):
         k_rf = res.shape[0]/sum(clsct)
         n0 = min(clsct)
-        matched_cluster_id = np.zeros((k_rf, (self.n_boostrap+1)))
-        matched_sample_id = [[None]*(self.n_boostrap+1)]*k_rf
+        matched_cluster_id = np.zeros((k_rf, (self.n_boostrap+1)))-1
+        matched_sample_id = [[None for i in range((self.n_boostrap+1)) ] for j in range(k_rf)]
 
         for i in xrange(k_rf):
             m = 0
@@ -437,50 +438,53 @@ class ClusterAnalysis(object):
             for j in xrange(self.n_boostrap):
                 n1 = clsct[j]
                 res_tmp = res[m:m+k_rf*n1].reshape(n1, k_rf)[:, i]
-                cluster_matched = np.where(res_tmp>=threshold)[0][0] # 0.8 <= x <= 1
-
-                matched_cluster_id[i, j] = cluster_matched
-                sample_matched = np.where(self.y_mean==cluster_matched)[0]
-                matched_sample_id[i][j] = sample_matched
-                m += m + k_rf * n1
+                if res_tmp[(res_tmp>=threshold)&(res_tmp<=1)].shape[0] != 0:
+                    cluster_matched = np.where((res_tmp>=threshold)&(res_tmp<=1))[0][0] # 0.8 <= x <= 1
+                    matched_cluster_id[i, j+1] = cluster_matched
+                    sample_matched = np.where(self.yb[j]==cluster_matched)[0]
+                    matched_sample_id[i][j+1] = sample_matched
+                m += k_rf * n1
         return matched_cluster_id, matched_sample_id
 
 
-    def confset(self, matched_sample_id, matched_cluster_id, alpha):
+    def confset(self, matched_sample_id, matched_cluster_id, alpha = 0.1):
         """
         Least impact first removal for computing Confident set for a set of matched clusters
         start with a union of all the clusters and remove one point in each iteration
         terminate when the consraint cannot hold if any extra point is taken out.
         :return:
         """
-        k_rf = matched_sample_id.shape[0]
-        confidentset=[None]*k_rf
-        S = matched_cluster_id
+        k_rf = matched_cluster_id.shape[0]
+        confidentset=[None for i in xrange(k_rf)]
+        SS = np.zeros_like(matched_cluster_id) - 1
         for i in xrange(k_rf):
+            print i
             # 1. find a set of matched clusters and get the union set of the clusters: S active set, S* union set, H*: union sample id
-            sample_matched = matched_sample_id[i]
+            sample_matched = []
             I = []
+            S = []
             m = 0
-            for i in matched_sample_id[i]:
-                if i is not None:
+            for ii in xrange(len(matched_sample_id[i])):
+                if matched_sample_id[i][ii] is not None:
                     I.append(m)
+                    S.append(ii)
                     m = m+1
-                    sample_matched.append(matched_sample_id[i])
+                    sample_matched.append(matched_sample_id[i][ii])
             sample_matched = np.array(sample_matched)
-            H = np.unique(sample_matched)
-            S = H
+            H = np.unique(np.hstack(sample_matched))
+
             M = I[-1]+1
 
             flag = 1
             while flag == 1:
                 # 2. get nl for each point and Il
                 Nl = np.zeros_like(H)
-                for id in H.shape[0]:
+                for id in xrange(H.shape[0]):
                     xl_id = H[id]
                     nl = 0
-                    for cls in sample_matched.shape[0]:
+                    for cls in xrange(sample_matched.shape[0]):
                         s_tmp = sample_matched[cls,]
-                        if id in s_tmp:
+                        if xl_id in s_tmp:
                             nl += 1
                     Nl[id] = nl
 
@@ -492,25 +496,27 @@ class ClusterAnalysis(object):
                     # update m*
                     M = M - min_l
                     # update I*
-                    for cls in sample_matched.shape[0]:
+                    for cls in xrange(sample_matched.shape[0]):
                         s_tmp = sample_matched[cls,]
                         if min_xl_id in s_tmp:
                             I.remove(cls)
-                            S[i, cls] = 0
+                            del S[cls]
 
                     matched_id = []
-                    for i in I:
-                        matched_id.append(sample_matched[i])
+                    for iii in I:
+                        matched_id.append(sample_matched[iii])
                     ##  update S*, that is sample_matched
                     sample_matched = np.array(matched_id)
                     ## update H*
-                    H = np.unique(sample_matched)
+                    H = np.unique(np.hstack(sample_matched))
+                    I = [jj for jj in xrange(sample_matched.shape[0])]
 
                 elif math.ceil(M - min_l) <= m*(1-alpha):
                     flag = 0
-            confidentset[i] = H
+                    confidentset[i] = H
+                    SS[i, S] = matched_cluster_id[i, S]
         
-        return confidentset, S
+        return confidentset, SS
 
     def clu_stablity(self, s_confset, s):
         """
@@ -567,42 +573,34 @@ class ClusterAnalysis(object):
         return p_mean
 
 
+"""
+test_code:
+
 if __name__  == '__main__':
     n_bs = 10
     n_sample = 5000
-    yb = np.genfromtxt('zb.cls')[5000:]
+    yb = np.genfromtxt('test_data/zb.cls')[5000:]
     y = yb[0*n_sample:1*n_sample]
     mean_test = MeanClustering(y, yb, n_bs)
-    #y_mean = mean_test.ota()
+    y_mean = mean_test.ota()
     #y_mean = mean_test.ota_costly()
-    wt = np.genfromtxt('zb.wt').flatten()
-    res_ref = np.genfromtxt('zb.ls')
+    wt = np.genfromtxt('test_data/zb.wt').flatten()
+    res_ref = np.genfromtxt('test_data/zb.ls')
+
     clst = np.array([4,4,4,4,4,4,4,4,4,4])
-    ca_test = ClusterAnalysis(yb, n_bs)
+    ca_test = ClusterAnalysis(yb, n_bs, y_mean, len = 5000)
     codect, nfave, res = ca_test.matchsplit(wt=wt, clsct=clst)
-    res = np.round(res, 4).reshape(40,4)
-    print np.count_nonzero(res-res_ref)
+    res = np.round(res, 4)
+    cluster_id, sample_id = ca_test.matchcluster(res, clst)
+    confidentset, S = ca_test.confset(sample_id, cluster_id)
+
+    yb = yb[0:5000]
+    yb[4999] = 0
+    y_mean[4997] = 0
+    clst = np.array([4])
+    ca_test = ClusterAnalysis(yb[0:5000], 1, y_mean, len = 5000)
+    codect, nfave, res = ca_test.matchsplit(wt=wt[0:16], clsct=clst)
+    cluster_id, sample_id = ca_test.matchcluster(res, clst)
+    confidentset, S = ca_test.confset(sample_id, cluster_id)
 
 """
-    X, y = load_data("../results/mnist")
-    n_boostrap = 10
-    yb = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
-    for i in xrange(n_boostrap):
-        i_tmp = i + 1
-        path = "../results/mnist/dcn_17/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
-        yb_tmp = io.loadmat(path)['y_pred']
-        yb = np.hstack((yb, yb_tmp))
-
-    yb_2 = io.loadmat("../results/mnist/dec_16/0_bs/0_results")['y_pred']
-    for i in xrange(n_boostrap):
-        i_tmp = i + 1
-        path = "../results/mnist/dec_16/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
-        yb_tmp = io.loadmat(path)['y_pred']
-        yb_2 = np.hstack((yb_2, yb_tmp))
-
-    yb = np.hstack((yb, yb_2))
-    ota_test = ota(X, y, yb, 2*(n_boostrap+1))
-    idx = ota_test.align_bs(folder='align_test')
-    y_mean = ota_test.get_repre(idx)
-"""
-    ######## call c package

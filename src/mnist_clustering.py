@@ -7,6 +7,7 @@ from dec import DeepEmbeddingClustering
 from dcn import DeepClusteringNetwork
 from util import genbssamples
 from keras.optimizers import SGD
+from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
 import argparse
 
 
@@ -128,3 +129,21 @@ if __name__ == "__main__":
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
     clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, args.m)
+
+    X, y = load_data("../results/mnist")
+    n_boostrap = 10
+    yb = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
+    for i in xrange(n_boostrap):
+        i_tmp = i + 1
+        path = "../results/mnist/dcn_17/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
+        yb_tmp = io.loadmat(path)['y_pred']
+        yb = np.hstack((yb, yb_tmp))
+
+    yb_2 = io.loadmat("../results/mnist/dec_16/0_bs/0_results")['y_pred']
+    for i in xrange(n_boostrap):
+        i_tmp = i + 1
+        path = "../results/mnist/dec_16/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
+        yb_tmp = io.loadmat(path)['y_pred']
+        yb_2 = np.hstack((yb_2, yb_tmp))
+
+    yb = np.hstack((yb, yb_2))
