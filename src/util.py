@@ -10,13 +10,15 @@ from sklearn.neighbors import KNeighborsClassifier as KNN
 from sklearn.mixture import GaussianMixture as Mclust
 from scipy.stats import multivariate_normal as mvnorm
 import numpy as np
-from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
+from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, jaccard_similarity_score
 
 class metrics(object):
     def nmi(self, y_true, y_pred):
         return normalized_mutual_info_score(y_true, y_pred)
     def ari(self, y_true, y_pred):
         return adjusted_rand_score(y_true, y_pred)
+    def jac(self, y_true, y_pred):
+        return jaccard_similarity_score(y_true, y_pred)
     def acc(self, y_true, y_pred):
         """
         Calculate clustering accuracy. Require scikit-learn installed
