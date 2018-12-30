@@ -7,6 +7,7 @@ from scipy import io
 from scipy.optimize import linprog
 from util import metrics
 metrics = metrics()
+import math
 
 class MeanClustering(object):
     def __init__(self, y, yb, n_boostrap):
@@ -294,9 +295,10 @@ class MeanClustering(object):
 
 
 class ClusterAnalysis(object):
-    def __init__(self, yb, n_boostrap):
+    def __init__(self, yb, n_boostrap, y_mean):
         self.yb = yb
         self.n_boostrap = n_boostrap
+        self.y_mean = y_mean
 
     def covercmp(self, wt_tmp, wt_ref, n_tmp, threshold):
         """
@@ -385,7 +387,7 @@ class ClusterAnalysis(object):
                     nf[i] = 0
         return code, nf, res_.flatten()
 
-    def matchsplit(self, y_mean = None, wt = None, clsct = None, threshold = 0.8):
+    def matchsplit(self, wt = None, clsct = None, threshold = 0.8):
         """
         :param y_mean: mean partition
         :param wt: weight
@@ -393,9 +395,6 @@ class ClusterAnalysis(object):
         :param threshold:
         :return: topological relationship
         """
-
-        if y_mean != None:
-            wt, clsct, _  = self.align(self.yb, y_mean)
         k_rf = wt.shape[0]/sum(clsct)
         clsct = clsct.astype('int')
 
@@ -424,12 +423,94 @@ class ClusterAnalysis(object):
 
         return 0
 
-    def confset(self, c):
+    def matchcluster(self, res, clsct, threshold = 0.8, usesplit = False):
+        k_rf = res.shape[0]/sum(clsct)
+        n0 = min(clsct)
+        matched_cluster_id = np.zeros((k_rf, (self.n_boostrap+1)))
+        matched_sample_id = [[None]*(self.n_boostrap+1)]*k_rf
+
+        for i in xrange(k_rf):
+            m = 0
+            id_ref = np.where(self.y_mean==i)[0]
+            matched_cluster_id[i, 0] = i
+            matched_sample_id[i][0] = id_ref
+            for j in xrange(self.n_boostrap):
+                n1 = clsct[j]
+                res_tmp = res[m:m+k_rf*n1].reshape(n1, k_rf)[:, i]
+                cluster_matched = np.where(res_tmp>=threshold)[0][0] # 0.8 <= x <= 1
+
+                matched_cluster_id[i, j] = cluster_matched
+                sample_matched = np.where(self.y_mean==cluster_matched)[0]
+                matched_sample_id[i][j] = sample_matched
+                m += m + k_rf * n1
+        return matched_cluster_id, matched_sample_id
+
+
+    def confset(self, matched_sample_id, matched_cluster_id, alpha):
         """
-        Confident set
+        Least impact first removal for computing Confident set for a set of matched clusters
+        start with a union of all the clusters and remove one point in each iteration
+        terminate when the consraint cannot hold if any extra point is taken out.
         :return:
         """
-        return 0
+        k_rf = matched_sample_id.shape[0]
+        confidentset=[None]*k_rf
+        S = matched_cluster_id
+        for i in xrange(k_rf):
+            # 1. find a set of matched clusters and get the union set of the clusters: S active set, S* union set, H*: union sample id
+            sample_matched = matched_sample_id[i]
+            I = []
+            m = 0
+            for i in matched_sample_id[i]:
+                if i is not None:
+                    I.append(m)
+                    m = m+1
+                    sample_matched.append(matched_sample_id[i])
+            sample_matched = np.array(sample_matched)
+            H = np.unique(sample_matched)
+            S = H
+            M = I[-1]+1
+
+            flag = 1
+            while flag == 1:
+                # 2. get nl for each point and Il
+                Nl = np.zeros_like(H)
+                for id in H.shape[0]:
+                    xl_id = H[id]
+                    nl = 0
+                    for cls in sample_matched.shape[0]:
+                        s_tmp = sample_matched[cls,]
+                        if id in s_tmp:
+                            nl += 1
+                    Nl[id] = nl
+
+                # 3. find the minimum nl and the corresponding xl_id
+
+                min_l = np.min(Nl)
+                min_xl_id = H[np.argmin(Nl)]
+                if (M - min_l) > m*(1-alpha):
+                    # update m*
+                    M = M - min_l
+                    # update I*
+                    for cls in sample_matched.shape[0]:
+                        s_tmp = sample_matched[cls,]
+                        if min_xl_id in s_tmp:
+                            I.remove(cls)
+                            S[i, cls] = 0
+
+                    matched_id = []
+                    for i in I:
+                        matched_id.append(sample_matched[i])
+                    ##  update S*, that is sample_matched
+                    sample_matched = np.array(matched_id)
+                    ## update H*
+                    H = np.unique(sample_matched)
+
+                elif math.ceil(M - min_l) <= m*(1-alpha):
+                    flag = 0
+            confidentset[i] = H
+        
+        return confidentset, S
 
     def clu_stablity(self, s_confset, s):
         """
