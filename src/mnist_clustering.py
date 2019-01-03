@@ -1,11 +1,11 @@
 import os
-#os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
+#os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
 from dcn import DeepClusteringNetwork
-from util import genbssamples
+from util import genbssamples, genaugbs
 from keras.optimizers import SGD
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
 import argparse
@@ -21,7 +21,7 @@ def load_data(path):
     y = np.array([np.where(r == 1)[0][0] for r in y])
     return X, y
 
-def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
+def clustering(X, y, n_clusters, n_bootstrep, method):
     if method == 'dec':
         print '================================'
         print '================================'
@@ -56,8 +56,7 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
             dir_path = os.path.join(path_dec, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            X_bs = X[bs_idx[i,:]]
-            y_bs = y[bs_idx[i,:]]
+            X_bs, y_bs = genaugbs(X, y)
             optimizer = SGD(0.01, 0.9)
             dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
             dec.train(optimizer=optimizer, batch_size=batch, pre_epochs = pre_epochs, epochs=finetune_epoch, tol= tol,
@@ -103,8 +102,7 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
             dir_path = os.path.join(path_dcn, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            X_bs = X[bs_idx[i,:]]
-            y_bs = y[bs_idx[i,:]]
+            X_bs, y_bs = genaugbs(X, y)
             dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
             dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,update_interval=update_interval,
                            pre_save_dir=path_dcn, save_dir=dir_path, lr=lr, pretrain = pretrain)
@@ -115,21 +113,19 @@ def clustering(X, y, n_clusters, n_bootstrep, bs_idx, method):
 
 if __name__ == "__main__":
 
-    path = "../results/mnist"
-    X, y = load_data(path)
-    n_clusters = len(np.unique(y))
-    n_bootstrep = 10
-    num_samples = X.shape[0]
-    bs_idx = genbssamples(n_bootstrep=n_bootstrep, num_samples=num_samples)
-    bs_idx = np.concatenate((np.arange(X.shape[0]).reshape(1, X.shape[0]), bs_idx))
-    io.savemat(path+'/bs_idx', {'idx': bs_idx})
-
     parser = argparse.ArgumentParser(description='clustering_mnist',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--m', default='dec', choices=['dec', 'dcn'])
     args = parser.parse_args()
-    clustering(X, y, n_clusters, n_bootstrep+1, bs_idx, args.m)
 
+    path = "../results/mnist"
+    X, y = load_data(path)
+    n_clusters = len(np.unique(y))
+    n_bootstrep = 1
+    args.m = 'dec'
+    clustering(X, y, n_clusters, n_bootstrep+1, args.m)
+
+"""
     X, y = load_data("../results/mnist")
     n_boostrap = 10
     yb = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
@@ -147,3 +143,4 @@ if __name__ == "__main__":
         yb_2 = np.hstack((yb_2, yb_tmp))
 
     yb = np.hstack((yb, yb_2))
+"""
