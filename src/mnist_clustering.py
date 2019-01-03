@@ -44,8 +44,11 @@ def clustering(X, y, n_clusters, n_bootstrep, method):
         for i in xrange(n_bootstrep):
             if i == 0:
                 pretrain = True
+                X_bs, y_bs = X, y
+
             else:
                 pretrain = False
+                X_bs, y_bs = genaugbs(X, y)
             print '********************************'
             print '********************************'
             print '********************************'
@@ -56,7 +59,6 @@ def clustering(X, y, n_clusters, n_bootstrep, method):
             dir_path = os.path.join(path_dec, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            X_bs, y_bs = genaugbs(X, y)
             optimizer = SGD(0.01, 0.9)
             dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
             dec.train(optimizer=optimizer, batch_size=batch, pre_epochs = pre_epochs, epochs=finetune_epoch, tol= tol,
@@ -90,8 +92,10 @@ def clustering(X, y, n_clusters, n_bootstrep, method):
         for i in xrange(n_bootstrep):
             if i == 0:
                 pretrain = True
+                X_bs, y_bs = X, y
             else:
                 pretrain = False
+                X_bs, y_bs = genaugbs(X, y)
             print '********************************'
             print '********************************'
             print '********************************'
@@ -102,7 +106,6 @@ def clustering(X, y, n_clusters, n_bootstrep, method):
             dir_path = os.path.join(path_dcn, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            X_bs, y_bs = genaugbs(X, y)
             dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
             dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,update_interval=update_interval,
                            pre_save_dir=path_dcn, save_dir=dir_path, lr=lr, pretrain = pretrain)
