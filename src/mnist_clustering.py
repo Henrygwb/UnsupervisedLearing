@@ -124,7 +124,7 @@ if __name__ == "__main__":
     path = "../results/mnist"
     X, y = load_data(path)
     n_clusters = len(np.unique(y))
-    n_bootstrep = 1
+    n_bootstrep = 10
     args.m = 'dec'
     clustering(X, y, n_clusters, n_bootstrep+1, args.m)
 
