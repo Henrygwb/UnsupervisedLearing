@@ -535,27 +535,31 @@ class ClusterAnalysis(object):
         for i in xrange(len(s)):
             s_tmp = s[i]
             s_ist_tmp = np.intersect1d(s_tmp, s_confset)
-            if np.count_nonzero((s_ist_tmp - s_tmp)) == 0 :
+            if np.array_equal(s_ist_tmp, s_tmp) == True:
                 m1 += 1
                 atr.append(s_tmp.shape[0] / conf_len)
             else:
                 m2 += 1
                 acr.append(s_ist_tmp.shape[0] / float(s_tmp.shape[0]))
-        atr = sum(atr)/m1
-        acr = sum(acr)/m2
+        if m1!= 0:
+            atr = sum(atr) / m1
+        else:
+            atr = 0
+        if m2!= 0:
+            acr = sum(acr)/m2
+        else:
+            acr = 0
         return atr, acr
 
-    def clu_dist(self, y, i, j):
+    def clu_dist(self, confset, i, j):
         """
         :param y: cluster result
         :param i: ith cluster
         :param j: jth cluster
         :return: cap_i_j clusuter alignment and points based separability between i and j
         """
-        c_i = y[y==i]
-        c_j = y[y==j]
-        s_i = self.confset(c_i)
-        s_j = self.confset(c_j)
+        s_i = confset[i]
+        s_j = confset[j]
         cap_i_j = metrics.jac(s_i, s_j)
         return cap_i_j
 

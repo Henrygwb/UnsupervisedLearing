@@ -5,7 +5,7 @@ import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
 from dcn import DeepClusteringNetwork
-from util import genbssamples, genaugbs
+from util import genbssamples, genaugbs, ensemble
 from keras.optimizers import SGD
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
 import argparse
@@ -124,11 +124,10 @@ def mean_par(X, y, n_boostrap, option):
 
         for i in xrange(n_boostrap):
             i_tmp = i + 1
-            if i_tmp != 5 and i_tmp != 10:
-                path = "../results/mnist/dec_16/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
-                yb_tmp = io.loadmat(path)['y_pred']
-                print np.max(yb_tmp, )
-                yb = np.hstack((yb, yb_tmp))
+            path = "../results/mnist/dec_16/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
+            yb_tmp = io.loadmat(path)['y_pred']
+            print np.unique(yb_tmp)
+            yb = np.hstack((yb, yb_tmp))
         yb = yb.flatten()[num_sample:]
         y_orin = yb.flatten()[0:num_sample]
         print 'Clustering result of the original dec model.'
@@ -138,18 +137,6 @@ def mean_par(X, y, n_boostrap, option):
         print '****************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         save_path = "../results/mnist/dec_16/"
-        mean_cluster = MeanClustering(y, yb, 8)
-        y_mean = mean_cluster.ota()
-        io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
-
-
-        cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 5000)
-        wt, clst = mean_cluster.align(yb, y_mean)
-        codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
-        res = np.round(res, 4)
-        cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
-        confidentset, S = cluster_analy.confset(sample_id, cluster_id)
-        io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'S':S})
 
     elif option == 'dcn':
         yb = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
@@ -167,19 +154,6 @@ def mean_par(X, y, n_boostrap, option):
         print '****************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         save_path = "../results/mnist/dcn_17/"
-
-        mean_cluster = MeanClustering(y, yb, 10)
-        y_mean = mean_cluster.ota()
-        io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
-
-
-        cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 70000)
-        wt, clst, _ = mean_cluster.align(yb, y_mean)
-        codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
-        res = np.round(res, 4)
-        cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
-        confidentset, S = cluster_analy.confset(sample_id, cluster_id)
-        io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'S':S})
 
     else:
         yb = io.loadmat("../results/mnist/dec_16/0_bs/0_results")['y_pred']
@@ -214,7 +188,42 @@ def mean_par(X, y, n_boostrap, option):
 
         yb = np.hstack((yb[0:num_sample*(n_boostrap/2)], yb_2[0:num_sample*(n_boostrap/2)]))
         save_path = "../results/mnist/"
-    acc = 0
+
+    ########### Mean partition #######################
+    mean_cluster = MeanClustering(y, yb, 10)
+    y_mean = mean_cluster.ota()
+    io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
+    en = ensemble(yb, n_boostrap, num_sample)
+    y_vote = en.voting()
+    print 'Clustering result of voting.'
+    acc = np.round(metrics.acc(y, y_vote), 5)
+    nmi = np.round(metrics.nmi(y, y_vote), 5)
+    ari = np.round(metrics.ari(y, y_vote), 5)
+    print '****************************************'
+    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    y_cspa = en.CSPA()
+    print 'Clustering result of CSPA.'
+    acc = np.round(metrics.acc(y, y_cspa), 5)
+    nmi = np.round(metrics.nmi(y, y_cspa), 5)
+    ari = np.round(metrics.ari(y, y_cspa), 5)
+    print '****************************************'
+    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    y_mcla = en.MCLA()
+    print 'Clustering result of MCLA.'
+    acc = np.round(metrics.acc(y, y_mcla), 5)
+    nmi = np.round(metrics.nmi(y, y_mcla), 5)
+    ari = np.round(metrics.ari(y, y_mcla), 5)
+    print '****************************************'
+    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+
+    ########### Confident point set #######################
+    cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 70000)
+    wt, clst, dist = mean_cluster.align(yb, y_mean)
+    codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
+    cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
+    confidentset, S = cluster_analy.confset(sample_id, cluster_id)
+    io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'S':S})
+
     new_confidentset = {}
     for i in xrange(len(confidentset)):
         idx = confidentset[i]
@@ -222,10 +231,6 @@ def mean_par(X, y, n_boostrap, option):
         b = Counter(y_cls).most_common(1)
         print b
         new_confidentset[b[0][0]] = confidentset[i]
-        acc_tmp = b[0][1] / float(idx.shape[0])
-        acc += acc_tmp
-    acc = acc / len(confidentset)
-    print acc
 
     for i in xrange(len(new_confidentset)):
         idx = new_confidentset[i]
@@ -235,6 +240,33 @@ def mean_par(X, y, n_boostrap, option):
         print idx.shape[0]
         print b[0][1] / float(idx.shape[0])
 
+    ########### Cluster stability #######################
+    stablity = np.zeros((len(confidentset), 2))
+    yb = yb.reshape(n_boostrap, num_sample)
+    yb = np.vstack((y_mean.reshape(1, 70000), yb))
+    for i in xrange(len(confidentset)):
+        confset = confidentset[i]
+        S_idx = S[i, ].astype('int')
+        SS = []
+        for ii in xrange(S_idx.shape[0]):
+            if S_idx[ii] != -1:
+                SS.append(np.where(yb[ii]==S_idx[ii])[0])
+        atr, acr = cluster_analy.clu_stablity(confset, SS)
+        stablity[i, 0] = atr
+        stablity[i, 1] = acr
+
+
+    ########### Cluster distance #######################
+    cls_dis = np.zeros((len(confidentset), len(confidentset)))
+    for i in xrange(len(confidentset)):
+        for j in xrange(len(confidentset)):
+            cls_dis[i,j] = cluster_analy.clu_dist(confidentset, i, j)
+
+    ########### Partition stability #######################
+    p_s = cluster_analy.par_stablity(dist, metric='mean')
+    print p_s
+
+    """
     with open('confit') as f:
         idx = f.readlines()
 
@@ -246,11 +278,13 @@ def mean_par(X, y, n_boostrap, option):
         print b
         print idx_tmp.shape[0]
         print b[0][1] / float(idx_tmp.shape[0])
-
+    """
 
 if __name__ == "__main__":
+#    option = '...'
+#    option = 'dcn'
     option = 'dec'
+
     X, y = load_data("../results/mnist")
     n_boostrap = 10
-    option = 'dcn'
     mean_par(X, y, n_boostrap, option)

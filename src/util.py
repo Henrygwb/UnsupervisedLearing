@@ -10,14 +10,49 @@ from scipy.stats import multivariate_normal as mvnorm
 import numpy as np
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, jaccard_similarity_score
 from keras.preprocessing.image import ImageDataGenerator
+import Cluster_Ensembles as CE
+import collections
+
+class ensemble(object):
+    def __init__(self, yb, n_boostrap, num_sample):
+        self.yb = yb
+        self.n_boostrap = n_boostrap
+        self.num_sample = num_sample
+
+    def CSPA(self):
+        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        n_class = np.max(yb)+1
+        return CE.cluster_ensembles(yb, N_clusters_max = n_class)
+
+    def MCLA(self):
+        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        n_class = np.max(yb)+1
+        return CE.MCLA('Cluster_Ensembles.h5' ,yb, N_clusters_max = n_class)
+
+    def voting(self):
+        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        y_mean = np.zeros((self.num_sample))
+        for i in xrange(self.num_sample):
+            tmp = yb[:, i]
+            a = collections.Counter(tmp)
+            max = a.most_common()[0]
+            y_mean[i] = max[0]
+        return y_mean.astype('int')
 
 class metrics(object):
+
     def nmi(self, y_true, y_pred):
         return normalized_mutual_info_score(y_true, y_pred)
+
     def ari(self, y_true, y_pred):
         return adjusted_rand_score(y_true, y_pred)
-    def jac(self, y_true, y_pred):
-        return jaccard_similarity_score(y_true, y_pred)
+
+    def jac(self, y_tmp, y_ref):
+        inst = np.intersect1d(y_tmp, y_ref)
+        unin = np.union1d(y_tmp, y_ref)
+        jaccard_dist = inst.shape[0]/(unin.shape[0])
+        return jaccard_dist
+
     def acc(self, y_true, y_pred):
         """
         Calculate clustering accuracy. Require scikit-learn installed
