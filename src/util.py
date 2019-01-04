@@ -70,35 +70,38 @@ def genbssamples(n_bootstrep, num_samples):
         idx[i,:] = np.random.choice(num_samples, num_samples, replace=True)
     return idx.astype('int32')
 
-def genaugbs(X, y, augment_size=10000):
-    image_generator = ImageDataGenerator(
-        rotation_range=10,
-        zoom_range=0.05,
-        width_shift_range=0.05,
-        height_shift_range=0.05,
-        horizontal_flip=False,
-        vertical_flip=False,
-        data_format="channels_last",
-        zca_whitening=True)
-
+def genaugbs(X, y, augment_size=10000, augment = False):
     randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
     y = y[randidx]
     X = X[randidx]
-    X = X.reshape(X.shape[0], 28, 28)
-    X = np.expand_dims(X, -1)
-    # fit data for zca whitening
-    image_generator.fit(X, augment=True)
 
-    # get transformed images
-    randidx = np.random.randint(X.shape[0], size=augment_size)
-    x_augmented = X[randidx].copy()
-    y_augmented = y[randidx].copy()
-    x_augmented = image_generator.flow(x_augmented, np.zeros(augment_size),
-                                       batch_size=augment_size, shuffle=False).next()[0]
-    # append augmented data to trainset
-    X = np.concatenate((X, x_augmented))
-    y = np.concatenate((y, y_augmented))
-    X = X.reshape(X.shape[0], 784)
+    if augment == True:
+        image_generator = ImageDataGenerator(
+            rotation_range=10,
+            zoom_range=0.05,
+            width_shift_range=0.05,
+            height_shift_range=0.05,
+            horizontal_flip=False,
+            vertical_flip=False,
+            data_format="channels_last",
+            zca_whitening=True)
+
+        X = X.reshape(X.shape[0], 28, 28)
+        X = np.expand_dims(X, -1)
+
+        # fit data for zca whitening
+        image_generator.fit(X, augment=True)
+
+        # get transformed images
+        randidx = np.random.randint(X.shape[0], size=augment_size)
+        x_augmented = X[randidx].copy()
+        y_augmented = y[randidx].copy()
+        x_augmented = image_generator.flow(x_augmented, np.zeros(augment_size),
+                                           batch_size=augment_size, shuffle=False).next()[0]
+        # append augmented data to trainset
+        X = np.concatenate((X, x_augmented))
+        y = np.concatenate((y, y_augmented))
+        X = X.reshape(X.shape[0], 784)
     return X, y
 
 

@@ -76,10 +76,13 @@ class MeanClustering(object):
 
                 y_i_j = y_tmp_i + y_ref_j
                 v3 = np.where(y_i_j == 2)[0].shape[0] # in cluster 1 and in cluster 2.
-                if normalized == True:
-                    jaccard_dist[i, j] = 1 - v3 / float(np.count_nonzero(y_i_j))
+                if np.count_nonzero(y_i_j) == 0:
+                    jaccard_dist[i,j] = 1
                 else:
-                    jaccard_dist[i,j] = np.where(y_i_j == 1)[0].shape[0]
+                    if normalized == True:
+                        jaccard_dist[i, j] = 1 - v3 / float(np.count_nonzero(y_i_j))
+                    else:
+                        jaccard_dist[i,j] = np.where(y_i_j == 1)[0].shape[0]
 
         ## compute the weight for each cluster
         q1 = np.zeros((nc_tmp))
