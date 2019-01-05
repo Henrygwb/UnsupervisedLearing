@@ -1,19 +1,17 @@
 import os
 #os.environ["THEANO_FLAGS"] = "module=FAST_RUN,device=gpu0,floatX=float32"
 #os.environ["CUDA_VISIBLE_DEVICES"]="1"
+import pandas as pd
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
 from dcn import DeepClusteringNetwork
-from util import genbssamples, genaugbs, ensemble
+from util import genbssamples, genaugbs, ensemble, metrics, tsne, pca
 from keras.optimizers import SGD
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
-import argparse
-from util import metrics
 from collections import Counter
-
 metrics = metrics()
-
+from ggplot import *
 
 def load_data(path):
     file = os.path.join(path, 'train')
@@ -225,6 +223,8 @@ def mean_par(X, y, n_boostrap, option):
     Interset = cluster_analy.interset(sample_id, cluster_id)
     io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'interset':Interset})
 
+    print 'Relabeling....'
+    new_cluster_id = np.zeros_like(cluster_id)
     new_confidentset = {}
     for i in xrange(len(confidentset)):
         idx = confidentset[i]
@@ -232,10 +232,19 @@ def mean_par(X, y, n_boostrap, option):
         b = Counter(y_cls).most_common(1)
         print b
         new_confidentset[b[0][0]] = confidentset[i]
-
+        new_cluster_id[b[0][0]] = cluster_id[i]
+    if option == 'dcn':
+        new_confidentset[9] = confidentset[1]
+        new_cluster_id[9] = cluster_id[1]
+    print '************************************'
     for i in xrange(len(new_confidentset)):
         idx = new_confidentset[i]
         y_cls = y[idx]
+        if option == 'dcn' and i == 9:
+            b = 9
+            print b
+            print idx.shape[0]
+            print float(np.where(y_cls==0)[0].shape[0]) / float(idx.shape[0])
         b = Counter(y_cls).most_common(1)
         print b
         print idx.shape[0]
@@ -243,12 +252,12 @@ def mean_par(X, y, n_boostrap, option):
 
     ########### Cluster stability #######################
     print '************ Cluster stability *****************'
-    stability = np.zeros((len(confidentset), 2))
+    stability = np.zeros((len(new_confidentset), 2))
     yb = yb.reshape(n_boostrap, num_sample)
     yb = np.vstack((y_mean.reshape(1, 70000), yb))
-    for i in xrange(len(confidentset)):
-        confset = confidentset[i]
-        S_idx = cluster_id[i, ].astype('int')
+    for i in xrange(len(new_confidentset)):
+        confset = new_confidentset[i]
+        S_idx = new_cluster_id[i, ].astype('int')
         SS = []
         for ii in xrange(S_idx.shape[0]):
             if S_idx[ii] != -1:
@@ -262,17 +271,16 @@ def mean_par(X, y, n_boostrap, option):
 
     ########### Cluster distance #######################
     print '************ Cluster distance *****************'
-    cls_dis = np.zeros((len(confidentset), len(confidentset)))
-    for i in xrange(len(confidentset)):
-        for j in xrange(len(confidentset)):
-            cls_dis[i,j] = cluster_analy.clu_dist(confidentset, i, j)
-    print cls_dis
+    cls_dis = np.zeros((len(new_confidentset), len(new_confidentset)))
+    for i in xrange(len(new_confidentset)):
+        for j in xrange(len(new_confidentset)):
+            cls_dis[i,j] = cluster_analy.clu_dist(new_confidentset, i, j)
+    print np.around(cls_dis, decimals=3)
 
     ########### Partition stability #######################
     print '************ Partition stability *****************'
     p_s = cluster_analy.par_stablity(dist, metric='mean')
     print p_s
-
     """
     with open('confit') as f:
         idx = f.readlines()
@@ -286,12 +294,26 @@ def mean_par(X, y, n_boostrap, option):
         print idx_tmp.shape[0]
         print b[0][1] / float(idx_tmp.shape[0])
     """
+    return y_mean, confidentset, Interset
+
+def draw_figure(X, y):
+    feat_cols = ['tsne-x', 'tsne-y']
+    df = pd.DataFrame(X, columns=feat_cols)
+    df['label'] = y
+
+    # ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
+    # geom_point() + \
+    # scale_color_brewer(type='diverging', palette=4) + \
+    # xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+
 
 if __name__ == "__main__":
-#    option = '...'
-    option = 'dcn'
+    option = '...'
+#    option = 'dcn'
 #    option = 'dec'
 
     X, y = load_data("../results/mnist")
     n_boostrap = 10
-    mean_par(X, y, n_boostrap, option)
+    #y_mean, confidentset, interset = mean_par(X, y, n_boostrap, option)
+    x_low = pca(X)
+    draw_figure(x_low, y)
