@@ -449,6 +449,15 @@ class ClusterAnalysis(object):
                 m += k_rf * n1
         return matched_cluster_id, matched_sample_id
 
+    def interset(self, matched_sample_id, matched_cluster_id):
+        k_rf = matched_cluster_id.shape[0]
+        Interset=[None for i in xrange(k_rf)]
+        for i in xrange(k_rf):
+            Interset_tmp = matched_sample_id[i][0]
+            for j in xrange(self.n_boostrap):
+                Interset_tmp = np.intersect1d(Interset_tmp, matched_sample_id[i][j+1])
+            Interset[i] = Interset_tmp
+        return Interset
 
     def confset(self, matched_sample_id, matched_cluster_id, alpha = 0.1):
         """
@@ -461,7 +470,7 @@ class ClusterAnalysis(object):
         confidentset=[None for i in xrange(k_rf)]
         SS = np.zeros_like(matched_cluster_id) - 1
         for i in xrange(k_rf):
-            print i
+            #print i
             # 1. find a set of matched clusters and get the union set of the clusters: S active set, S* union set, H*: union sample id
             sample_matched = []
             I = []
