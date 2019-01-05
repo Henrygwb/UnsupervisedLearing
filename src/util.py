@@ -2,6 +2,8 @@ from __future__ import print_function
 import sys
 import re
 import scipy
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 from sklearn import datasets
 from sklearn import cluster
 from sklearn.neighbors import KNeighborsClassifier as KNN
@@ -13,6 +15,15 @@ from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
 
+def tsne(X):
+    x_low = TSNE(n_components=2).fit_transform(X)
+    return x_low
+
+def pca(X):
+    x_low = PCA(n_components=2).fit_transform(X)
+    return x_low
+
+
 class ensemble(object):
     def __init__(self, yb, n_boostrap, num_sample):
         self.yb = yb
@@ -22,12 +33,12 @@ class ensemble(object):
     def CSPA(self):
         yb = self.yb.reshape(self.n_boostrap, self.num_sample)
         n_class = np.max(yb)+1
-        return CE.cluster_ensembles(yb, N_clusters_max = n_class)
+        return CE.cluster_ensembles(yb, N_clusters_max = n_class, verbose=0)
 
     def MCLA(self):
         yb = self.yb.reshape(self.n_boostrap, self.num_sample)
         n_class = np.max(yb)+1
-        return CE.MCLA('Cluster_Ensembles.h5' ,yb, N_clusters_max = n_class)
+        return CE.MCLA('Cluster_Ensembles.h5' ,yb, N_clusters_max = n_class, verbose=0)
 
     def voting(self):
         yb = self.yb.reshape(self.n_boostrap, self.num_sample)
@@ -50,7 +61,7 @@ class metrics(object):
     def jac(self, y_tmp, y_ref):
         inst = np.intersect1d(y_tmp, y_ref)
         unin = np.union1d(y_tmp, y_ref)
-        jaccard_dist = inst.shape[0]/(unin.shape[0])
+        jaccard_dist = float(inst.shape[0])/float(unin.shape[0])
         return jaccard_dist
 
     def acc(self, y_true, y_pred):
@@ -208,6 +219,8 @@ class ProgressBar(object):
         self.current = self.total
         self()
         print('', file=self.output)
+
+
 
 ### Test gendata
 # n = 10
