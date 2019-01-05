@@ -222,7 +222,8 @@ def mean_par(X, y, n_boostrap, option):
     codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
     cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
     confidentset, S = cluster_analy.confset(sample_id, cluster_id)
-    io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'S':S})
+    Interset = cluster_analy.interset(sample_id, cluster_id)
+    io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'interset':Interset})
 
     new_confidentset = {}
     for i in xrange(len(confidentset)):
@@ -241,28 +242,34 @@ def mean_par(X, y, n_boostrap, option):
         print b[0][1] / float(idx.shape[0])
 
     ########### Cluster stability #######################
-    stablity = np.zeros((len(confidentset), 2))
+    print '************ Cluster stability *****************'
+    stability = np.zeros((len(confidentset), 2))
     yb = yb.reshape(n_boostrap, num_sample)
     yb = np.vstack((y_mean.reshape(1, 70000), yb))
     for i in xrange(len(confidentset)):
         confset = confidentset[i]
-        S_idx = S[i, ].astype('int')
+        S_idx = cluster_id[i, ].astype('int')
         SS = []
         for ii in xrange(S_idx.shape[0]):
             if S_idx[ii] != -1:
                 SS.append(np.where(yb[ii]==S_idx[ii])[0])
         atr, acr = cluster_analy.clu_stablity(confset, SS)
-        stablity[i, 0] = atr
-        stablity[i, 1] = acr
+        stability[i, 0] = atr
+        stability[i, 1] = acr
+    print np.round(stability, 4)[:,0]
+    print np.round(stability, 4)[:,1]
 
 
     ########### Cluster distance #######################
+    print '************ Cluster distance *****************'
     cls_dis = np.zeros((len(confidentset), len(confidentset)))
     for i in xrange(len(confidentset)):
         for j in xrange(len(confidentset)):
             cls_dis[i,j] = cluster_analy.clu_dist(confidentset, i, j)
+    print cls_dis
 
     ########### Partition stability #######################
+    print '************ Partition stability *****************'
     p_s = cluster_analy.par_stablity(dist, metric='mean')
     print p_s
 
@@ -282,8 +289,8 @@ def mean_par(X, y, n_boostrap, option):
 
 if __name__ == "__main__":
 #    option = '...'
-#    option = 'dcn'
-    option = 'dec'
+    option = 'dcn'
+#    option = 'dec'
 
     X, y = load_data("../results/mnist")
     n_boostrap = 10
