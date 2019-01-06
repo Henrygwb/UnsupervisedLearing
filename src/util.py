@@ -2,7 +2,6 @@ from __future__ import print_function
 import sys
 import re
 import scipy
-from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from sklearn import datasets
 from sklearn import cluster
@@ -14,9 +13,10 @@ from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, j
 from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
+from tsne import tsne
 
-def tsne(X):
-    x_low = TSNE(n_components=2).fit_transform(X)
+def t_sne(X):
+    x_low = tsne(X, no_dims = 2)
     return x_low
 
 def pca(X):
