@@ -191,29 +191,28 @@ def mean_par(X, y, n_boostrap, option):
     ########### Mean partition #######################
     mean_cluster = MeanClustering(y, yb, 10)
     y_mean = mean_cluster.ota()
-    io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
-    en = ensemble(yb, n_boostrap, num_sample)
-    y_vote = en.voting()
-    print 'Clustering result of voting.'
-    acc = np.round(metrics.acc(y, y_vote), 5)
-    nmi = np.round(metrics.nmi(y, y_vote), 5)
-    ari = np.round(metrics.ari(y, y_vote), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    y_cspa = en.CSPA()
-    print 'Clustering result of CSPA.'
-    acc = np.round(metrics.acc(y, y_cspa), 5)
-    nmi = np.round(metrics.nmi(y, y_cspa), 5)
-    ari = np.round(metrics.ari(y, y_cspa), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    y_mcla = en.MCLA()
-    print 'Clustering result of MCLA.'
-    acc = np.round(metrics.acc(y, y_mcla), 5)
-    nmi = np.round(metrics.nmi(y, y_mcla), 5)
-    ari = np.round(metrics.ari(y, y_mcla), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # en = ensemble(yb, n_boostrap, num_sample)
+    # y_vote = en.voting()
+    # print 'Clustering result of voting.'
+    # acc = np.round(metrics.acc(y, y_vote), 5)
+    # nmi = np.round(metrics.nmi(y, y_vote), 5)
+    # ari = np.round(metrics.ari(y, y_vote), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # y_cspa = en.CSPA()
+    # print 'Clustering result of CSPA.'
+    # acc = np.round(metrics.acc(y, y_cspa), 5)
+    # nmi = np.round(metrics.nmi(y, y_cspa), 5)
+    # ari = np.round(metrics.ari(y, y_cspa), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # y_mcla = en.MCLA()
+    # print 'Clustering result of MCLA.'
+    # acc = np.round(metrics.acc(y, y_mcla), 5)
+    # nmi = np.round(metrics.nmi(y, y_mcla), 5)
+    # ari = np.round(metrics.ari(y, y_mcla), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
     ########### Confident point set #######################
     cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 70000)
@@ -222,11 +221,12 @@ def mean_par(X, y, n_boostrap, option):
     cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
     confidentset, S = cluster_analy.confset(sample_id, cluster_id)
     Interset = cluster_analy.interset(sample_id, cluster_id)
-    io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'interset':Interset})
 
     print 'Relabeling....'
     new_cluster_id = np.zeros_like(cluster_id)
     new_confidentset = {}
+    new_interset = {}
+    new_y_mean = np.zeros_like(y_mean)
     for i in xrange(len(confidentset)):
         idx = confidentset[i]
         y_cls = y[idx]
@@ -234,9 +234,17 @@ def mean_par(X, y, n_boostrap, option):
         print b
         new_confidentset[b[0][0]] = confidentset[i]
         new_cluster_id[b[0][0]] = cluster_id[i]
+        new_interset[b[0][0]] = Interset[i]
+        new_y_mean[y_mean==i] = b[0][0]
     if option == 'dcn':
         new_confidentset[9] = confidentset[1]
         new_cluster_id[9] = cluster_id[1]
+        new_interset[9] = Interset[1].astype('int')
+        new_y_mean[y_mean == 1] = 9
+        new_y_mean = new_y_mean.astype('int')
+
+    io.savemat(save_path+'/mean_confident',{"y_mean":new_y_mean, "confidentset":new_confidentset, 'interset':new_interset})
+
     print '************************************'
     for i in xrange(len(new_confidentset)):
         idx = new_confidentset[i]
@@ -295,19 +303,19 @@ def mean_par(X, y, n_boostrap, option):
         print idx_tmp.shape[0]
         print b[0][1] / float(idx_tmp.shape[0])
     """
-    return y_mean, confidentset, Interset
+    return new_y_mean, new_confidentset, new_interset
 
-def draw_figure(X, y, y_mean, confidentset, option):
+def draw_figure(X, y, y_mean, confidentset, Interset, option):
     feat_cols = ['tsne-x', 'tsne-y']
     df = pd.DataFrame(X, columns=feat_cols)
     df['label'] = [str(i) for i in y]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
-        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
-    p.save(option+'_Original_Clusters.png')
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4)+ xlab(" ") + ylab(" ") + ggtitle("Ground Truth")
+    p.save(option + '_Original_Clusters.png')
+    #plt.clf()
 
     df['label'] = [str(i) for i in y_mean]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
-        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle("Mean")+ xlab(" ") + ylab(" ")
+    #   +theme(axis_text_x=ggplot.theme_blank(), axis_text_y=ggplot.theme_blank())
     p.save(option+'_Mean_Clusters.png')
 
     for i in xrange(len(confidentset)):
@@ -315,21 +323,26 @@ def draw_figure(X, y, y_mean, confidentset, option):
         idx = confidentset[i]
         y_conf[idx] = 1
         df['label'] = [str(ii) for ii in y_conf]
-        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging',
-                                                                                                       palette=4) \
-            + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
-        p.save(option+'_Clusters_'+str(i)+'.png')
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Confset_'+str(i))+ xlab(" ") + ylab(" ")
+        p.save(option+'_confset_'+str(i)+'.png')
 
+
+    for i in xrange(len(Interset)):
+        y_conf = np.zeros_like(y)
+        idx = Interset[i]
+        y_conf[idx] = 1
+        df['label'] = [str(ii) for ii in y_conf]
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Interset_' + str(i))+ xlab(" ") + ylab(" ")
+        p.save(option + '_interset_' + str(i) + '.png')
 
 if __name__ == "__main__":
-#    option = '...'
+    option = 'all'
 #    option = 'dcn'
-    option = 'dec'
+#    option = 'dec'
 
     X, y = load_data("../results/mnist")
     n_boostrap = 10
-    #y_mean, confidentset, interset = mean_par(X, y, n_boostrap, option)
-    x_low = t_sne(X)
+    y_mean, confidentset, Interset = mean_par(X, y, n_boostrap, option)
+    x_low = t_sne(X, file="../results/mnist/low_d")
     print x_low.shape
-    io.savemat('x_low', {'x_low':x_low})
-    #draw_figure(x_low, y, y_mean, interset, option)
+    draw_figure(x_low, y, y_mean, confidentset, Interset, option)

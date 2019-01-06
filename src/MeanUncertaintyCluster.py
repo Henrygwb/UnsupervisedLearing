@@ -455,7 +455,8 @@ class ClusterAnalysis(object):
         for i in xrange(k_rf):
             Interset_tmp = matched_sample_id[i][0]
             for j in xrange(self.n_boostrap):
-                Interset_tmp = np.intersect1d(Interset_tmp, matched_sample_id[i][j+1])
+                if matched_cluster_id[i][j+1] !=-1:
+                    Interset_tmp = np.intersect1d(Interset_tmp, matched_sample_id[i][j+1])
             Interset[i] = Interset_tmp
         return Interset
 
