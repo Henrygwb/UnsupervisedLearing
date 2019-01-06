@@ -4,14 +4,15 @@ import os
 import pandas as pd
 import numpy as np
 from scipy import io
-from dec import DeepEmbeddingClustering
-from dcn import DeepClusteringNetwork
+#from dec import DeepEmbeddingClustering
+#from dcn import DeepClusteringNetwork
 from util import genbssamples, genaugbs, ensemble, metrics, tsne, pca
 from keras.optimizers import SGD
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
 from collections import Counter
 metrics = metrics()
 from ggplot import *
+from matplotlib import pyplot as plt
 
 def load_data(path):
     file = os.path.join(path, 'train')
@@ -191,28 +192,28 @@ def mean_par(X, y, n_boostrap, option):
     mean_cluster = MeanClustering(y, yb, 10)
     y_mean = mean_cluster.ota()
     io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
-    en = ensemble(yb, n_boostrap, num_sample)
-    y_vote = en.voting()
-    print 'Clustering result of voting.'
-    acc = np.round(metrics.acc(y, y_vote), 5)
-    nmi = np.round(metrics.nmi(y, y_vote), 5)
-    ari = np.round(metrics.ari(y, y_vote), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    y_cspa = en.CSPA()
-    print 'Clustering result of CSPA.'
-    acc = np.round(metrics.acc(y, y_cspa), 5)
-    nmi = np.round(metrics.nmi(y, y_cspa), 5)
-    ari = np.round(metrics.ari(y, y_cspa), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    y_mcla = en.MCLA()
-    print 'Clustering result of MCLA.'
-    acc = np.round(metrics.acc(y, y_mcla), 5)
-    nmi = np.round(metrics.nmi(y, y_mcla), 5)
-    ari = np.round(metrics.ari(y, y_mcla), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # en = ensemble(yb, n_boostrap, num_sample)
+    # y_vote = en.voting()
+    # print 'Clustering result of voting.'
+    # acc = np.round(metrics.acc(y, y_vote), 5)
+    # nmi = np.round(metrics.nmi(y, y_vote), 5)
+    # ari = np.round(metrics.ari(y, y_vote), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # y_cspa = en.CSPA()
+    # print 'Clustering result of CSPA.'
+    # acc = np.round(metrics.acc(y, y_cspa), 5)
+    # nmi = np.round(metrics.nmi(y, y_cspa), 5)
+    # ari = np.round(metrics.ari(y, y_cspa), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+    # y_mcla = en.MCLA()
+    # print 'Clustering result of MCLA.'
+    # acc = np.round(metrics.acc(y, y_mcla), 5)
+    # nmi = np.round(metrics.nmi(y, y_mcla), 5)
+    # ari = np.round(metrics.ari(y, y_mcla), 5)
+    # print '****************************************'
+    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
     ########### Confident point set #######################
     cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 70000)
@@ -296,24 +297,37 @@ def mean_par(X, y, n_boostrap, option):
     """
     return y_mean, confidentset, Interset
 
-def draw_figure(X, y):
+def draw_figure(X, y, y_mean, confidentset, option):
     feat_cols = ['tsne-x', 'tsne-y']
     df = pd.DataFrame(X, columns=feat_cols)
-    df['label'] = y
+    df['label'] = [str(i) for i in y]
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
+        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+    p.save(option+'_Original_Clusters.png')
 
-    # ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
-    # geom_point() + \
-    # scale_color_brewer(type='diverging', palette=4) + \
-    # xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+    df['label'] = [str(i) for i in y_mean]
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
+        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+    p.save(option+'_Mean_Clusters.png')
+
+    for i in xrange(len(confidentset)):
+        y_conf = np.zeros_like(y)
+        idx = confidentset[i]
+        y_conf[idx] = 1
+        df['label'] = [str(ii) for ii in y_conf]
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging',
+                                                                                                       palette=4) \
+            + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+        p.save(option+'_Clusters_'+str(i)+'.png')
 
 
 if __name__ == "__main__":
-    option = '...'
+#    option = '...'
 #    option = 'dcn'
-#    option = 'dec'
+    option = 'dec'
 
     X, y = load_data("../results/mnist")
     n_boostrap = 10
-    #y_mean, confidentset, interset = mean_par(X, y, n_boostrap, option)
+    y_mean, confidentset, interset = mean_par(X, y, n_boostrap, option)
     x_low = pca(X)
-    draw_figure(x_low, y)
+    draw_figure(x_low, y, y_mean, interset, option)
