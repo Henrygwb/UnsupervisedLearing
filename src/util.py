@@ -1,7 +1,9 @@
 from __future__ import print_function
 import sys
+import os
 import re
 import scipy
+from scipy import io
 from sklearn.decomposition import PCA
 from sklearn import datasets
 from sklearn import cluster
@@ -15,8 +17,65 @@ import Cluster_Ensembles as CE
 import collections
 from tsne import tsne
 
-def t_sne(X):
-    x_low = tsne(X, no_dims = 2)
+def genaugbs(X, y, augment_size=10000, augment = False):
+    randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
+    y = y[randidx]
+    X = X[randidx]
+
+    if augment == True:
+        image_generator = ImageDataGenerator(
+            rotation_range=10,
+            zoom_range=0.05,
+            width_shift_range=0.05,
+            height_shift_range=0.05,
+            horizontal_flip=False,
+            vertical_flip=False,
+            data_format="channels_last",
+            zca_whitening=True)
+
+        X = X.reshape(X.shape[0], 28, 28)
+        X = np.expand_dims(X, -1)
+
+        # fit data for zca whitening
+        image_generator.fit(X, augment=True)
+
+        # get transformed images
+        randidx = np.random.randint(X.shape[0], size=augment_size)
+        x_augmented = X[randidx].copy()
+        y_augmented = y[randidx].copy()
+        x_augmented = image_generator.flow(x_augmented, np.zeros(augment_size),
+                                           batch_size=augment_size, shuffle=False).next()[0]
+        # append augmented data to trainset
+        X = np.concatenate((X, x_augmented))
+        y = np.concatenate((y, y_augmented))
+        X = X.reshape(X.shape[0], 784)
+    return X, y
+
+def load_data(path, dataset):
+    if dataset == 'mnist':
+        path = os.path.join(path, 'mnist')
+        file = os.path.join(path, 'train')
+        X = io.loadmat(file)['train_x']
+        y = io.loadmat(file)['train_y']
+        file = os.path.join(path, 'testall')
+        X = np.concatenate((X, io.loadmat(file)['test_x']))
+        y = np.concatenate((y, io.loadmat(file)['test_y']))
+        n_clusters = y.shape[1]
+        y = np.array([np.where(r == 1)[0][0] for r in y])
+    elif dataset == 'rcv':
+        path = os.path.join(path, 'rcv')
+        file = os.path.join(path, 'rcv1_4')
+        X = io.loadmat(file)['X']
+        y = io.loadmat(file)['Y']
+        n_clusters = y.shape[1]
+        y = np.array([np.where(r == 1)[0][0] for r in y])
+    return X, y, n_clusters, path
+
+def t_sne(X, file, option = 0):
+    if option == 0:
+        x_low = io.loadmat(file)['ans']
+    else:
+        x_low = tsne(X, no_dims = 2)
     return x_low
 
 def pca(X):
@@ -25,23 +84,23 @@ def pca(X):
 
 
 class ensemble(object):
-    def __init__(self, yb, n_boostrap, num_sample):
+    def __init__(self, yb, n_bootstrap, num_sample):
         self.yb = yb
-        self.n_boostrap = n_boostrap
+        self.n_bootstrap = n_bootstrap
         self.num_sample = num_sample
 
     def CSPA(self):
-        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        yb = self.yb.reshape(self.n_bootstrap, self.num_sample)
         n_class = np.max(yb)+1
         return CE.cluster_ensembles(yb, N_clusters_max = n_class, verbose=0)
 
     def MCLA(self):
-        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        yb = self.yb.reshape(self.n_bootstrap, self.num_sample)
         n_class = np.max(yb)+1
         return CE.MCLA('Cluster_Ensembles.h5' ,yb, N_clusters_max = n_class, verbose=0)
 
     def voting(self):
-        yb = self.yb.reshape(self.n_boostrap, self.num_sample)
+        yb = self.yb.reshape(self.n_bootstrap, self.num_sample)
         y_mean = np.zeros((self.num_sample))
         for i in xrange(self.num_sample):
             tmp = yb[:, i]
@@ -84,71 +143,6 @@ class metrics(object):
         from sklearn.utils.linear_assignment_ import linear_assignment
         ind = linear_assignment(w.max() - w)
         return sum([w[i, j] for i, j in ind]) * 1.0 / y_pred.size
-
-def gendata(n, p, c):
-    """
-    :param n: number of data
-    :param p: dimension
-    :param c: number of clusters
-    :return:
-    """
-    pp = np.sort(np.random.uniform(0,1,c-1))
-    pp = np.append(pp,[1]) - np.insert(pp,0,0)
-    mu = np.random.uniform(-5,5,c*p).reshape((p, c))
-    sigma = np.zeros((p,p,c))
-    for i in xrange(c):
-        scale = datasets.make_spd_matrix(n_dim = p)
-        sigma[:,:,i] = scipy.stats.invwishart.rvs(df = 5*p, scale = scale)
-    rsample = np.random.multinomial(1, pp, size=n)
-    y = np.array([np.where(i == 1)[0][0] for i in rsample])
-    X = np.array([mvnorm.rvs(mean=mu[:,i], cov=sigma[:,:,i]) for i in y])
-
-    return X, y
-
-def genbssamples(n_bootstrep, num_samples):
-    """
-    generate bootstrap sample with replacement.
-    :param n_bootstrap: number of bootstrap sample
-    :return: bootstap sample
-    """
-    idx = np.zeros((n_bootstrep, num_samples))
-    for i in xrange(n_bootstrep):
-        idx[i,:] = np.random.choice(num_samples, num_samples, replace=True)
-    return idx.astype('int32')
-
-def genaugbs(X, y, augment_size=10000, augment = False):
-    randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
-    y = y[randidx]
-    X = X[randidx]
-
-    if augment == True:
-        image_generator = ImageDataGenerator(
-            rotation_range=10,
-            zoom_range=0.05,
-            width_shift_range=0.05,
-            height_shift_range=0.05,
-            horizontal_flip=False,
-            vertical_flip=False,
-            data_format="channels_last",
-            zca_whitening=True)
-
-        X = X.reshape(X.shape[0], 28, 28)
-        X = np.expand_dims(X, -1)
-
-        # fit data for zca whitening
-        image_generator.fit(X, augment=True)
-
-        # get transformed images
-        randidx = np.random.randint(X.shape[0], size=augment_size)
-        x_augmented = X[randidx].copy()
-        y_augmented = y[randidx].copy()
-        x_augmented = image_generator.flow(x_augmented, np.zeros(augment_size),
-                                           batch_size=augment_size, shuffle=False).next()[0]
-        # append augmented data to trainset
-        X = np.concatenate((X, x_augmented))
-        y = np.concatenate((y, y_augmented))
-        X = X.reshape(X.shape[0], 784)
-    return X, y
 
 
 ##### clustering approach

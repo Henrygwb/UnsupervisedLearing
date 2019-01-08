@@ -176,12 +176,12 @@ class DeepClusteringNetwork(object):
                 variables_to_restore = slim.get_model_variables()
 	
                 restorer = tf.train.Saver(variables_to_restore)
-		restorer.restore(sess, self.pretrained_model)
+                restorer.restore(sess, self.pretrained_model)
                 saver = tf.train.Saver()
                 #saver.restore(sess, self.pretrained_model)
 
                 recon_l = sess.run(self._recont_loss, feed_dict={self._input: self.X})
-		print recon_l 
+                print recon_l
                 print '****************************************'
                 print ('Reconstruction loss: %.6f' % (recon_l))
 

@@ -4,27 +4,20 @@ import os
 import pandas as pd
 import numpy as np
 from scipy import io
-#from dec import DeepEmbeddingClustering
-#from dcn import DeepClusteringNetwork
-from util import genbssamples, genaugbs, ensemble, metrics, t_sne, pca
+from dec import DeepEmbeddingClustering
+from dcn import DeepClusteringNetwork
+from util import genaugbs, ensemble, metrics, t_sne, pca, load_data
 from keras.optimizers import SGD
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
 from collections import Counter
 metrics = metrics()
-from ggplot import *
-from matplotlib import pyplot as plt
 
-def load_data(path):
-    file = os.path.join(path, 'train')
-    X = io.loadmat(file)['train_x']
-    y = io.loadmat(file)['train_y']
-    file = os.path.join(path, 'testall')
-    X = np.concatenate((X, io.loadmat(file)['test_x']))
-    y = np.concatenate((y, io.loadmat(file)['test_y']))
-    y = np.array([np.where(r == 1)[0][0] for r in y])
-    return X, y
+def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval):
+    batch = batch
+    pre_epochs = pre_epochs
+    finetune_epochs = finetune_epochs
+    update_interval = update_interval
 
-def clustering(X, y, n_clusters, n_bootstrep, method, path = '../results/mnist'):
     if method == 'dec':
         print '================================'
         print '================================'
@@ -35,12 +28,9 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path = '../results/mnist')
         print '================================'
 
         path_dec = os.path.join(path, 'dec_16')
-        hidden_neurons = [X.shape[-1], 500, 500, 2000, 10]
-        batch = 256
-        pre_epochs = 300
-        finetune_epoch = 2e4
-        update_interval = 140
+        hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
         tol = 1e-3
+
         if os.path.exists(path_dec) == False:
             os.system('mkdir ' + path_dec)
 
@@ -64,7 +54,7 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path = '../results/mnist')
                 os.system('mkdir '+dir_path)
             optimizer = SGD(0.01, 0.9)
             dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
-            dec.train(optimizer=optimizer, batch_size=batch, pre_epochs = pre_epochs, epochs=finetune_epoch, tol= tol,
+            dec.train(optimizer=optimizer, batch_size=batch, pre_epochs = pre_epochs, epochs=finetune_epochs, tol= tol,
                            update_interval=update_interval, pre_save_dir= path_dec, save_dir=dir_path, shuffle= False, pretrain = pretrain)
             dec.evaluate()
 
@@ -84,13 +74,9 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path = '../results/mnist')
         if os.path.exists(path_dcn) == False:
             os.system('mkdir ' + path_dcn)
 
-        hidden_neurons = [X.shape[-1], 500, 500, 2000, 10]
-        batch = 256
-        pre_epochs = 250
-        finetune_epochs = 50
-        update_interval = 10
-        lr = 0.005
-        lbd = 1
+        hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
+        lr = 0.001
+        lbd = 4
 
         for i in xrange(n_bootstrep):
             if i == 0:
@@ -116,12 +102,12 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path = '../results/mnist')
             io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
     return 0
 
-def mean_par(X, y, n_boostrap, option):
+def mean_par(X, y, n_bootstrap, option):
     num_sample = y.shape[0]
     if option == 'dec':
         yb = io.loadmat("../results/mnist/dec_16/0_bs/0_results")['y_pred']
 
-        for i in xrange(n_boostrap):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path = "../results/mnist/dec_16/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
             yb_tmp = io.loadmat(path)['y_pred']
@@ -139,7 +125,7 @@ def mean_par(X, y, n_boostrap, option):
 
     elif option == 'dcn':
         yb = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
-        for i in xrange(n_boostrap):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path = "../results/mnist/dcn_17/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
             yb_tmp = io.loadmat(path)['y_pred']
@@ -156,7 +142,7 @@ def mean_par(X, y, n_boostrap, option):
 
     else:
         yb = io.loadmat("../results/mnist/dec_16/0_bs/0_results")['y_pred']
-        for i in xrange(n_boostrap):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path = "../results/mnist/dec_16/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
             yb_tmp = io.loadmat(path)['y_pred']
@@ -171,7 +157,7 @@ def mean_par(X, y, n_boostrap, option):
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
         yb_2 = io.loadmat("../results/mnist/dcn_17/0_bs/0_results")['y_pred']
-        for i in xrange(n_boostrap):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path = "../results/mnist/dcn_17/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
             yb_tmp = io.loadmat(path)['y_pred']
@@ -185,14 +171,13 @@ def mean_par(X, y, n_boostrap, option):
         print '****************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
-        yb = np.hstack((yb[0:num_sample*(n_boostrap/2)], yb_2[0:num_sample*(n_boostrap/2)]))
+        yb = np.hstack((yb[0:num_sample*(n_bootstrap/2)], yb_2[0:num_sample*(n_bootstrap/2)]))
         save_path = "../results/mnist/"
 
     ########### Mean partition #######################
     mean_cluster = MeanClustering(y, yb, 10)
     y_mean = mean_cluster.ota()
-    io.savemat(save_path+'/mean_partition',{"y_mean":y_mean})
-    en = ensemble(yb, n_boostrap, num_sample)
+    en = ensemble(yb, n_bootstrap, num_sample)
     y_vote = en.voting()
     print 'Clustering result of voting.'
     acc = np.round(metrics.acc(y, y_vote), 5)
@@ -216,17 +201,18 @@ def mean_par(X, y, n_boostrap, option):
     print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
     ########### Confident point set #######################
-    cluster_analy = ClusterAnalysis(yb, n_boostrap, y_mean, len = 70000)
+    cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_mean, len = 70000)
     wt, clst, dist = mean_cluster.align(yb, y_mean)
     codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
     cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
     confidentset, S = cluster_analy.confset(sample_id, cluster_id)
     Interset = cluster_analy.interset(sample_id, cluster_id)
-    io.savemat(save_path+'/confident_set',{"confidentset":confidentset, 'interset':Interset})
 
     print 'Relabeling....'
     new_cluster_id = np.zeros_like(cluster_id)
     new_confidentset = {}
+    new_interset = {}
+    new_y_mean = np.zeros_like(y_mean)
     for i in xrange(len(confidentset)):
         idx = confidentset[i]
         y_cls = y[idx]
@@ -234,9 +220,17 @@ def mean_par(X, y, n_boostrap, option):
         print b
         new_confidentset[b[0][0]] = confidentset[i]
         new_cluster_id[b[0][0]] = cluster_id[i]
+        new_interset[b[0][0]] = Interset[i]
+        new_y_mean[y_mean==i] = b[0][0]
     if option == 'dcn':
         new_confidentset[9] = confidentset[1]
         new_cluster_id[9] = cluster_id[1]
+        new_interset[9] = Interset[1].astype('int')
+        new_y_mean[y_mean == 1] = 9
+        new_y_mean = new_y_mean.astype('int')
+
+    io.savemat(save_path+'/mean_confident',{"y_mean":new_y_mean, "confidentset":new_confidentset, 'interset':new_interset})
+
     print '************************************'
     for i in xrange(len(new_confidentset)):
         idx = new_confidentset[i]
@@ -254,7 +248,7 @@ def mean_par(X, y, n_boostrap, option):
     ########### Cluster stability #######################
     print '************ Cluster stability *****************'
     stability = np.zeros((len(new_confidentset), 2))
-    yb = yb.reshape(n_boostrap, num_sample)
+    yb = yb.reshape(n_bootstrap, num_sample)
     yb = np.vstack((y_mean.reshape(1, 70000), yb))
     for i in xrange(len(new_confidentset)):
         confset = new_confidentset[i]
@@ -295,19 +289,20 @@ def mean_par(X, y, n_boostrap, option):
         print idx_tmp.shape[0]
         print b[0][1] / float(idx_tmp.shape[0])
     """
-    return y_mean, confidentset, Interset
+    return new_y_mean, new_confidentset, new_interset
 
-def draw_figure(X, y, y_mean, confidentset, option):
+def draw_figure(X, y, y_mean, confidentset, Interset, option):
+    from ggplot import *
     feat_cols = ['tsne-x', 'tsne-y']
     df = pd.DataFrame(X, columns=feat_cols)
     df['label'] = [str(i) for i in y]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
-        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
-    p.save(option+'_Original_Clusters.png')
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4)+ xlab(" ") + ylab(" ") + ggtitle("Ground Truth")
+    p.save(option + '_Original_Clusters.png')
+    #plt.clf()
 
     df['label'] = [str(i) for i in y_mean]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) \
-        + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle("Mean")+ xlab(" ") + ylab(" ")
+    #   +theme(axis_text_x=ggplot.theme_blank(), axis_text_y=ggplot.theme_blank())
     p.save(option+'_Mean_Clusters.png')
 
     for i in xrange(len(confidentset)):
@@ -315,21 +310,53 @@ def draw_figure(X, y, y_mean, confidentset, option):
         idx = confidentset[i]
         y_conf[idx] = 1
         df['label'] = [str(ii) for ii in y_conf]
-        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging',
-                                                                                                       palette=4) \
-            + xlab("tsne-x") + ylab("tsne-y") + ggtitle("MNIST")
-        p.save(option+'_Clusters_'+str(i)+'.png')
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Confset_'+str(i))+ xlab(" ") + ylab(" ")
+        p.save(option+'_confset_'+str(i)+'.png')
 
+
+    for i in xrange(len(Interset)):
+        y_conf = np.zeros_like(y)
+        idx = Interset[i]
+        y_conf[idx] = 1
+        df['label'] = [str(ii) for ii in y_conf]
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Interset_' + str(i))+ xlab(" ") + ylab(" ")
+        p.save(option + '_interset_' + str(i) + '.png')
 
 if __name__ == "__main__":
-#    option = '...'
-#    option = 'dcn'
-    option = 'dec'
+    dataset = 'rcv'
+    n_bootstraps = 10
+    method = 'dec'
+    test = 1
+    X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
 
-    X, y = load_data("../results/mnist")
-    n_boostrap = 10
-    #y_mean, confidentset, interset = mean_par(X, y, n_boostrap, option)
-    x_low = t_sne(X)
-    print x_low.shape
-    io.savemat('x_low', {'x_low':x_low})
-    #draw_figure(x_low, y, y_mean, interset, option)
+    if test == 1:
+        n_bootstraps = 2
+        batch = 256
+        pre_epochs = 1
+        finetune_epochs = 4
+        update_interval = 2
+    else:
+        n_bootstraps = 10
+        if method == 'dec':
+            batch = 256
+            pre_epochs = 300
+            finetune_epochs = 2e4
+            update_interval = 140
+
+        elif method == 'dcn':
+            batch = 256
+            pre_epochs = 250
+            finetune_epochs = 300
+            update_interval = 20
+
+    clustering(X, y, n_clusters, n_bootstraps, method, path = path,
+               batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
+
+#     option = 'all'
+# #    option = 'dcn'
+# #    option = 'dec'
+#
+#     y_mean, confidentset, Interset = mean_par(X, y, n_bootstraps, option)
+#     x_low = t_sne(X, file="../results/mnist/low_d")
+#     print x_low.shape
+#     draw_figure(x_low, y, y_mean, confidentset, Interset, option)

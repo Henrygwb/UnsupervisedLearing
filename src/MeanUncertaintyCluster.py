@@ -11,11 +11,11 @@ import math
 
 
 class MeanClustering(object):
-    def __init__(self, y, yb, n_boostrap):
+    def __init__(self, y, yb, n_bootstrap):
         self.y = y.astype('int')
         self.n = y.shape[0]
         self.yb = yb.astype('int')
-        self.n_boostrap = n_boostrap
+        self.n_bootstrap = n_bootstrap
 
     def match(self, jaccard_dist, q1, q2, nc_1, nc_2):
         """
@@ -118,22 +118,22 @@ class MeanClustering(object):
         :return: clsct: number of clusters in each partition
         :return: dc: distance of between bootstrap partitions and reference partition
         """
-        clsct = np.zeros((self.n_boostrap,))
-        for i in xrange(self.n_boostrap):
+        clsct = np.zeros((self.n_bootstrap,))
+        for i in xrange(self.n_bootstrap):
             clsct[i] = np.max(yb[i*self.n:(i+1)*self.n,])+1
 
         if equalcls:
             max_clsct = np.max(clsct)
-            for i in xrange(self.n_boostrap):
+            for i in xrange(self.n_bootstrap):
                 clsct[i] = max_clsct
         clsct = clsct.astype('int')
         clsct_ref = np.max(y_ref)+1
 
-        dc = np.zeros((self.n_boostrap,))
+        dc = np.zeros((self.n_bootstrap,))
         m = np.sum(clsct) * clsct_ref
         wt = np.zeros((m,))
         m = 0
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             y_tmp = yb[i*self.n:(i+1)*self.n,]
             dc[i], wt[m:m+clsct[i]*clsct_ref,]= self.alignclusters(y_tmp, y_ref, clsct[i], clsct_ref)
             m += clsct[i]*clsct_ref
@@ -141,17 +141,17 @@ class MeanClustering(object):
 
     def ref_idx(self, yb):
         """
-        Conduct the alignment between the boostrap samples
+        Conduct the alignment between the bootstrap samples
         selecting the partition the has the minimum average distance to all the other partitions
         :param yb: bootstrap partitions
         :return: the index of reference partition
         """
-        advdist = np.zeros((self.n_boostrap, ))
-        for i in xrange(self.n_boostrap):
+        advdist = np.zeros((self.n_bootstrap, ))
+        for i in xrange(self.n_bootstrap):
             yb_tmp = np.copy(yb)
             y_tmp_ref = np.copy(yb[i*self.n:(i+1)*self.n])
             _, _, dist= self.align(yb_tmp, y_tmp_ref)
-            advdist[i] = sum(dist) / float(self.n_boostrap)
+            advdist[i] = sum(dist) / float(self.n_bootstrap)
         idx_ref = int(np.argmin(advdist))
         print 'Index of the reference partition: %d' %idx_ref
         return idx_ref
@@ -174,13 +174,13 @@ class MeanClustering(object):
 
         # 3.1 compute the cluster-posterior of each bootstrap partition
         p_raw = []
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             p_raw.append(OneHotEncoder().fit_transform(self.yb[self.n*i:self.n*(i+1),].reshape(self.n, 1)))
 
         # 3.2 transform bootstrap partitions to reference partition and sum them up
         p_t_r_sum = np.zeros((self.n, k_rf))
         m = 0
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             wt_sub = wt[m:m+k_rf*clsct[i]]
             m += k_rf*clsct[i]
             wt_sub = wt_sub.reshape((clsct[i], k_rf))
@@ -192,7 +192,7 @@ class MeanClustering(object):
             p_t_r_sum = p_t_r_sum + p_t_r
 
         # 4. compute mean partition
-        p_mean = p_t_r_sum / self.n_boostrap
+        p_mean = p_t_r_sum / self.n_bootstrap
         y_mean = np.argmax(p_mean, axis=1)
 
         acc = np.round(metrics.acc(self.y, y_mean), 5)
@@ -210,8 +210,8 @@ class MeanClustering(object):
         """
         print "Compute a set of mean partitions by treating each bootstrap partiton as reference partition and select " \
               "the one with the minimum average distance."
-        y_mean_all = np.zeros((self.n*self.n_boostrap,))
-        for i in xrange(self.n_boostrap):
+        y_mean_all = np.zeros((self.n*self.n_bootstrap,))
+        for i in xrange(self.n_bootstrap):
             y_mean_all[self.n*i:self.n*(i+1)] = self.ota(i)
         y_mean_all = y_mean_all.astype('int')
         selected_idx = self.ref_idx(y_mean_all)
@@ -240,7 +240,7 @@ class MeanClustering(object):
         rfcls = np.zeros(self.n)
         ybcls = np.hstack((rfcls, yb_stack))
         np.savetxt("zb.cls", ybcls, fmt='%d')
-        cmd = './labelsw_bunch2 -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b ' + str(self.n_boostrap + 1) + ' -2'
+        cmd = './labelsw_bunch2 -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b ' + str(self.n_bootstrap + 1) + ' -2'
         os.system(cmd + ' > tmp')
         idx = int(open('tmp', 'r').read())
         os.remove('tmp')
@@ -263,7 +263,7 @@ class MeanClustering(object):
         ybcls = np.hstack((rfcls, yb_stack))
         np.savetxt("zb.cls", ybcls, fmt='%d')
 
-        cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(self.n_boostrap + 1) + \
+        cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(self.n_bootstrap + 1) + \
               " -t "+ str(threshold) +  " -a " + str(alpha) + " -2"
         os.system(cmd)
         dist = np.loadtxt("zb.par")
@@ -272,13 +272,13 @@ class MeanClustering(object):
         os.chdir("..")
         m = dist[:,0].astype('int')
         p_raw = []
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             p_raw.append(OneHotEncoder().fit_transform(self.yb[0, self.n*i:self.n*(i+1)].reshape(self.n, 1)))
 
-        p_tild = np.zeros((self.n, k_rf*self.n_boostrap))
+        p_tild = np.zeros((self.n, k_rf*self.n_bootstrap))
         p_tild_sum = np.zeros((self.n, k_rf))
 
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             wt_sub = wt[(sum(m[0:i])):sum(m[0:i+1]),]
             wt_row_sums = wt_sub.sum(axis=1)
             wt_row_sums[np.where(wt_row_sums) == 0 ] = 1
@@ -286,7 +286,7 @@ class MeanClustering(object):
             p_tild = np.matmul(p_raw[i].toarray(), wt_sub)
             p_tild_sum = p_tild_sum + p_tild
 
-        p_bar = p_tild_sum / self.n_boostrap
+        p_bar = p_tild_sum / self.n_bootstrap
         y_mean = np.argmax(p_bar, axis=1)
 
         acc = np.round(metrics.acc(self.y, y_mean), 5)
@@ -299,10 +299,10 @@ class MeanClustering(object):
 
 
 class ClusterAnalysis(object):
-    def __init__(self, yb, n_boostrap, y_mean, len):
+    def __init__(self, yb, n_bootstrap, y_mean, len):
         self.y_mean = y_mean
-        self.yb = yb.reshape(n_boostrap, len)
-        self.n_boostrap = n_boostrap
+        self.yb = yb.reshape(n_bootstrap, len)
+        self.n_bootstrap = n_bootstrap
 
     def covercmp(self, wt_tmp, wt_ref, n_tmp, threshold):
         """
@@ -407,7 +407,7 @@ class ClusterAnalysis(object):
         res = np.zeros((sum(clsct)*k_rf, ))
 
         m = 0
-        for i in xrange(self.n_boostrap):
+        for i in xrange(self.n_bootstrap):
             code, nf, res[m:m+k_rf*clsct[i],] = self.access(wt[m:m+k_rf*clsct[i],], clsct[i], k_rf, threshold)
             code = code.astype('int')
             for j in xrange(k_rf):
@@ -430,15 +430,15 @@ class ClusterAnalysis(object):
     def matchcluster(self, res, clsct, threshold = 0.8, usesplit = False):
         k_rf = res.shape[0]/sum(clsct)
         n0 = min(clsct)
-        matched_cluster_id = np.zeros((k_rf, (self.n_boostrap+1)))-1
-        matched_sample_id = [[None for i in range((self.n_boostrap+1)) ] for j in range(k_rf)]
+        matched_cluster_id = np.zeros((k_rf, (self.n_bootstrap+1)))-1
+        matched_sample_id = [[None for i in range((self.n_bootstrap+1)) ] for j in range(k_rf)]
 
         for i in xrange(k_rf):
             m = 0
             id_ref = np.where(self.y_mean==i)[0]
             matched_cluster_id[i, 0] = i
             matched_sample_id[i][0] = id_ref
-            for j in xrange(self.n_boostrap):
+            for j in xrange(self.n_bootstrap):
                 n1 = clsct[j]
                 res_tmp = res[m:m+k_rf*n1].reshape(n1, k_rf)[:, i]
                 if res_tmp[(res_tmp>=threshold)&(res_tmp<=1)].shape[0] != 0:
@@ -454,8 +454,9 @@ class ClusterAnalysis(object):
         Interset=[None for i in xrange(k_rf)]
         for i in xrange(k_rf):
             Interset_tmp = matched_sample_id[i][0]
-            for j in xrange(self.n_boostrap):
-                Interset_tmp = np.intersect1d(Interset_tmp, matched_sample_id[i][j+1])
+            for j in xrange(self.n_bootstrap):
+                if matched_cluster_id[i][j+1] !=-1:
+                    Interset_tmp = np.intersect1d(Interset_tmp, matched_sample_id[i][j+1])
             Interset[i] = Interset_tmp
         return Interset
 
