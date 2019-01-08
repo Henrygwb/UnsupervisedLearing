@@ -349,7 +349,7 @@ if __name__ == "__main__":
             finetune_epochs = 300
             update_interval = 20
 
-    clustering(X, y, n_clusters, n_bootstraps, method, path = path,
+    clustering(X =X, y=y, n_clusters = n_clusters, n_bootstrep=n_bootstraps, method = method, path = path,
                batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
 
 #     option = 'all'
