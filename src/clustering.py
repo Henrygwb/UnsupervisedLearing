@@ -6,13 +6,11 @@ import pandas as pd
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering
-from dcn import DeepClusteringNetwork
-from dcn_bo import test_SdC
+from dcn_tf import DeepClusteringNetwork
+from dcn_theano import test_SdC
 
-from util import genaugbs, ensemble, metrics, t_sne, pca, load_data
+from util import genaugbs, metrics, load_data
 from keras.optimizers import SGD
-from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
-from collections import Counter
 metrics = metrics()
 
 def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
@@ -78,10 +76,6 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, f
         if os.path.exists(path_dcn) == False:
             os.system('mkdir ' + path_dcn)
 
-        hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
-        lr = 0.001
-        lbd = 4
-
         for i in xrange(n_bootstrep):
             if i == 0:
                 pretrain = True
@@ -99,12 +93,19 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, f
             dir_path = os.path.join(path_dcn, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
+
             if using_own == True:
+                print 'Using tensorflow model...'
+                hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
+                lr = 0.001
+                lbd = 4
+
                 dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
                 dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,update_interval=update_interval,
                            pre_save_dir=path_dcn, save_dir=dir_path, lr=lr, pretrain = pretrain)
                 pred_test = dcn_test.test(X, y)
             else:
+                print 'Using theano model...'
                 config = {'train_x': X_bs,
                           'train_y': y_bs,
                           'test_x': X,
@@ -125,18 +126,20 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, f
     return 0
 
 if __name__ == "__main__":
-    dataset = 'rcv'
+    dataset = 'mnist'
     n_bootstraps = 10
-    method = 'dec'
-    test = 0
+    method = 'dcn'
+    test = 1
     X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
 
     if test == 1:
         n_bootstraps = 2
         batch = 256
-        pre_epochs = 1
-        finetune_epochs = 4
+        pre_epochs = 0
+        finetune_epochs = 0
         update_interval = 2
+        using_own = False
+
     else:
         n_bootstraps = 10
         if method == 'dec':
@@ -150,6 +153,7 @@ if __name__ == "__main__":
             pre_epochs = 250
             finetune_epochs = 300
             update_interval = 20
+            using_own = False
 
     clustering(X =X, y=y, n_clusters = n_clusters, n_bootstrep=n_bootstraps, method = method, path = path,
                batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
