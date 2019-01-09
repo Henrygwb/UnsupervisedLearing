@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from scipy import io
 from sklearn.preprocessing import OneHotEncoder
-from util import ensemble, metrics, t_sne, pca, load_data
+from util import ensemble, metrics, DimReduce, load_data
 from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis, MeanUncertainty_c
 from collections import Counter
 metrics = metrics()
@@ -272,6 +272,6 @@ if __name__ == "__main__":
     y_mean, confidentset, Interset = ensemble_ana(y, n_bootstraps, option, path, using_c=1)
 
     print '.....'
-    x_low = t_sne(X, file="../results/mnist/low_d")
+    x_low = DimReduce.bh_tsne(X, file="../results/mnist/low_d")
     print x_low.shape
     draw_figure(x_low, y, y_mean, confidentset, Interset, option)

@@ -15,7 +15,7 @@ from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, j
 from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
-from tsne import tsne
+from tsne import bh_sne
 
 def genaugbs(X, y, augment_size=10000, augment = False):
     randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
@@ -71,17 +71,15 @@ def load_data(path, dataset):
         y = np.array([np.where(r == 1)[0][0] for r in y])
     return X, y, n_clusters, path
 
-def t_sne(X, file, option = 0):
-    if option == 0:
-        x_low = io.loadmat(file)['ans']
-    else:
-        x_low = tsne(X, no_dims = 2)
-    return x_low
 
-def pca(X):
-    x_low = PCA(n_components=2).fit_transform(X)
-    return x_low
-
+class DimReduce(object):
+    def __init__(self, X):
+        self.X = X
+    def pca(self):
+        x_low = PCA(n_components=2).fit_transform(self.X)
+        return x_low
+    def bh_tsne(self):
+        return bh_sne(self.X, no_dims = 2)
 
 class ensemble(object):
     def __init__(self, yb, n_bootstrap, num_sample):
