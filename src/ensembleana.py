@@ -96,6 +96,10 @@ def ensemble_ana(y,
     ########### Mean partition #######################
 
     yb = np.hstack((y_orin, yb))
+    if n_bootstrap != yb.shape[0]/num_sample:
+        n_bootstrap = yb.shape[0]/num_sample
+        print 'Changing the bootstrap number to ' + str(n_bootstrap)
+
     if using_c == 1:
         y_mean, \
         confidentset, \
@@ -257,16 +261,15 @@ def draw_figure(X, y, y_mean, confidentset, Interset, option):
         p.save(option + '_interset_' + str(i) + '.png')
 
 if __name__ == "__main__":
-    dataset = 'rcv'
+    dataset = 'mnist'
     n_bootstraps = 10
     method = 'dec'
-    test = 0
     X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
 
-    option = 'dcn_dec'
+    #option = 'dcn_dec'
     #option = 'dcn'
-    #option = 'dec'
-    y_mean, confidentset, Interset = ensemble_ana(X, y, n_bootstraps, option, path)
+    option = 'dec'
+    y_mean, confidentset, Interset = ensemble_ana(y, n_bootstraps, option, path, using_c=1)
 
     print '.....'
     x_low = t_sne(X, file="../results/mnist/low_d")
