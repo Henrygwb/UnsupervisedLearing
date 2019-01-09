@@ -1,18 +1,20 @@
+import os
+import shutil
 import pandas as pd
 import numpy as np
 from scipy import io
-
+from sklearn.preprocessing import OneHotEncoder
 from util import ensemble, metrics, t_sne, pca, load_data
-from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis
+from MeanUncertaintyCluster import MeanClustering, ClusterAnalysis, MeanUncertainty_c
 from collections import Counter
 metrics = metrics()
 
-def mean_par(y, n_bootstrap, option, path):
+def load_pre(y, n_bootstrap, option, path):
     num_sample = y.shape[0]
     if option == 'dec':
         yb = io.loadmat(path+"/dec_16/0_bs/0_results")['y_pred']
 
-        for i in xrange(n_bootstrap-1):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path_1 = path+"/dec_16/" + str(i_tmp)+"_bs/" + str(i_tmp)+ "_results"
             yb_tmp = io.loadmat(path_1)['y_pred']
@@ -30,7 +32,7 @@ def mean_par(y, n_bootstrap, option, path):
 
     elif option == 'dcn':
         yb = io.loadmat(path+"/dcn_17/"+"0_bs/0_results")['y_pred']
-        for i in xrange(n_bootstrap-1):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path_1 = path+"/dcn_17/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
             yb_tmp = io.loadmat(path_1)['y_pred']
@@ -45,9 +47,9 @@ def mean_par(y, n_bootstrap, option, path):
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         save_path = path+"/dcn_17/"
 
-    else:
+    elif option == 'dcn_dec':
         yb = io.loadmat(path+"/dec_16/"+"0_bs/0_results")['y_pred']
-        for i in xrange(n_bootstrap-1):
+        for i in xrange(n_bootstrap):
             i_tmp = i + 1
             path_1 = path+"/dec_16/" + str(i_tmp) + "_bs/" + str(i_tmp) + "_results"
             yb_tmp = io.loadmat(path_1)['y_pred']
@@ -78,41 +80,67 @@ def mean_par(y, n_bootstrap, option, path):
 
         yb = np.hstack((yb[0:num_sample*(n_bootstrap/2)], yb_2[0:num_sample*(n_bootstrap/2)]))
         save_path = path
+    return y_orin, yb, save_path
 
+def ensemble_ana(y,
+                 n_bootstrap,
+                 option,
+                 path,
+                 using_c =0,
+                 return_mean =1,
+                 compare = 0,
+                 threshold = 0.8,
+                 alpha = 0.1):
+    num_sample = y.shape[0]
+    y_orin, yb, save_path = load_pre(y, n_bootstrap, option, path)
     ########### Mean partition #######################
-    yb = np.hstack((y_orin, yb))
-    mean_cluster = MeanClustering(y, yb, 10)
-    y_mean = mean_cluster.ota()
-    en = ensemble(yb, n_bootstrap, num_sample)
-    y_vote = en.voting()
-    print 'Clustering result of voting.'
-    acc = np.round(metrics.acc(y, y_vote), 5)
-    nmi = np.round(metrics.nmi(y, y_vote), 5)
-    ari = np.round(metrics.ari(y, y_vote), 5)
-    print '****************************************'
-    print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    # y_cspa = en.CSPA()
-    # print 'Clustering result of CSPA.'
-    # acc = np.round(metrics.acc(y, y_cspa), 5)
-    # nmi = np.round(metrics.nmi(y, y_cspa), 5)
-    # ari = np.round(metrics.ari(y, y_cspa), 5)
-    # print '****************************************'
-    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-    # y_mcla = en.MCLA()
-    # print 'Clustering result of MCLA.'
-    # acc = np.round(metrics.acc(y, y_mcla), 5)
-    # nmi = np.round(metrics.nmi(y, y_mcla), 5)
-    # ari = np.round(metrics.ari(y, y_mcla), 5)
-    # print '****************************************'
-    # print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
-    ########### Confident point set #######################
-    cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_mean, len = num_sample)
-    wt, clst, dist = mean_cluster.align(yb, y_mean)
-    codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
-    cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
-    confidentset, S = cluster_analy.confset(sample_id, cluster_id)
-    Interset = cluster_analy.interset(sample_id, cluster_id)
+    yb = np.hstack((y_orin, yb))
+    if using_c == 1:
+        y_mean, \
+        confidentset, \
+        Interset, \
+        cluster_id, \
+        dist, \
+        cluster_analy = MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean)
+    else:
+        mean_cluster = MeanClustering(y, yb, 10)
+        if return_mean ==1:
+            y_mean = mean_cluster.ota()
+        else:
+            idx = MeanClustering.ref_idx(yb)
+            y_mean = yb[(idx-1)*num_sample:idx*num_sample]
+        en = ensemble(yb, n_bootstrap, num_sample)
+        if compare == 1:
+            y_vote = en.voting()
+            print 'Clustering result of voting.'
+            acc = np.round(metrics.acc(y, y_vote), 5)
+            nmi = np.round(metrics.nmi(y, y_vote), 5)
+            ari = np.round(metrics.ari(y, y_vote), 5)
+            print '****************************************'
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+            y_cspa = en.CSPA()
+            print 'Clustering result of CSPA.'
+            acc = np.round(metrics.acc(y, y_cspa), 5)
+            nmi = np.round(metrics.nmi(y, y_cspa), 5)
+            ari = np.round(metrics.ari(y, y_cspa), 5)
+            print '****************************************'
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+            y_mcla = en.MCLA()
+            print 'Clustering result of MCLA.'
+            acc = np.round(metrics.acc(y, y_mcla), 5)
+            nmi = np.round(metrics.nmi(y, y_mcla), 5)
+            ari = np.round(metrics.ari(y, y_mcla), 5)
+            print '****************************************'
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+
+        ########### Confident point set #######################
+        cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_mean, len = num_sample)
+        wt, clst, dist = mean_cluster.align(yb, y_mean)
+        codect, nfave, res = cluster_analy.matchsplit(wt=wt, clsct=clst)
+        cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
+        confidentset, S = cluster_analy.confset(sample_id, cluster_id)
+        Interset = cluster_analy.interset(sample_id, cluster_id)
 
     print 'Relabeling....'
     new_cluster_id = np.zeros_like(cluster_id)
@@ -128,12 +156,13 @@ def mean_par(y, n_bootstrap, option, path):
         new_cluster_id[b[0][0]] = cluster_id[i]
         new_interset[b[0][0]] = Interset[i]
         new_y_mean[y_mean==i] = b[0][0]
-    if option == 'dcn' and path == '../results/mnist':
-        new_confidentset[9] = confidentset[1]
-        new_cluster_id[9] = cluster_id[1]
-        new_interset[9] = Interset[1].astype('int')
-        new_y_mean[y_mean == 1] = 9
-        new_y_mean = new_y_mean.astype('int')
+
+    # if option == 'dcn' and path == '../results/mnist':
+    #     new_confidentset[9] = confidentset[1]
+    #     new_cluster_id[9] = cluster_id[1]
+    #     new_interset[9] = Interset[1].astype('int')
+    #     new_y_mean[y_mean == 1] = 9
+    #     new_y_mean = new_y_mean.astype('int')
 
     io.savemat(save_path+'/mean_confident',{"y_mean":new_y_mean, "confidentset":new_confidentset, 'interset':new_interset})
 
@@ -182,19 +211,6 @@ def mean_par(y, n_bootstrap, option, path):
     print '************ Partition stability *****************'
     p_s = cluster_analy.par_stablity(dist, metric='mean')
     print p_s
-    """
-    with open('confit') as f:
-        idx = f.readlines()
-
-    for i in xrange(10):
-        print '******************************' + str(i)
-        idx_tmp = np.fromstring(idx[i][2:-1], sep = ' ')
-        y_cls = y[idx_tmp.astype('int')]
-        b = Counter(y_cls).most_common(1)
-        print b
-        print idx_tmp.shape[0]
-        print b[0][1] / float(idx_tmp.shape[0])
-    """
     return new_y_mean, new_confidentset, new_interset
 
 def draw_figure(X, y, y_mean, confidentset, Interset, option):
@@ -202,12 +218,19 @@ def draw_figure(X, y, y_mean, confidentset, Interset, option):
     feat_cols = ['tsne-x', 'tsne-y']
     df = pd.DataFrame(X, columns=feat_cols)
     df['label'] = [str(i) for i in y]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4)+ xlab(" ") + ylab(" ") + ggtitle("Ground Truth")
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
+        geom_point() + \
+        scale_color_brewer(type='diverging', palette=4)+ \
+        xlab(" ") + ylab(" ") + \
+        ggtitle("Ground Truth")
     p.save(option + '_Original_Clusters.png')
     #plt.clf()
 
     df['label'] = [str(i) for i in y_mean]
-    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle("Mean")+ xlab(" ") + ylab(" ")
+    p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
+        geom_point() + \
+        scale_color_brewer(type='diverging', palette=4) + \
+        ggtitle("Mean")+ xlab(" ") + ylab(" ")
     #   +theme(axis_text_x=ggplot.theme_blank(), axis_text_y=ggplot.theme_blank())
     p.save(option+'_Mean_Clusters.png')
 
@@ -216,7 +239,9 @@ def draw_figure(X, y, y_mean, confidentset, Interset, option):
         idx = confidentset[i]
         y_conf[idx] = 1
         df['label'] = [str(ii) for ii in y_conf]
-        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Confset_'+str(i))+ xlab(" ") + ylab(" ")
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
+            geom_point() + scale_color_brewer(type='diverging', palette=4) \
+            + ggtitle('Confset_'+str(i))+ xlab(" ") + ylab(" ")
         p.save(option+'_confset_'+str(i)+'.png')
 
 
@@ -225,7 +250,10 @@ def draw_figure(X, y, y_mean, confidentset, Interset, option):
         idx = Interset[i]
         y_conf[idx] = 1
         df['label'] = [str(ii) for ii in y_conf]
-        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + geom_point() + scale_color_brewer(type='diverging', palette=4) + ggtitle('Interset_' + str(i))+ xlab(" ") + ylab(" ")
+        p = ggplot(df, aes(x='tsne-x', y='tsne-y', color='label')) + \
+            geom_point() + \
+            scale_color_brewer(type='diverging', palette=4) + \
+            ggtitle('Interset_' + str(i))+ xlab(" ") + ylab(" ")
         p.save(option + '_interset_' + str(i) + '.png')
 
 if __name__ == "__main__":
@@ -235,10 +263,11 @@ if __name__ == "__main__":
     test = 0
     X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
 
-    option = 'all'
+    option = 'dcn_dec'
     #option = 'dcn'
     #option = 'dec'
-    y_mean, confidentset, Interset = mean_par(X, y, n_bootstraps, option, path)
+    y_mean, confidentset, Interset = ensemble_ana(X, y, n_bootstraps, option, path)
+
     print '.....'
     x_low = t_sne(X, file="../results/mnist/low_d")
     print x_low.shape

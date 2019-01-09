@@ -589,6 +589,83 @@ class ClusterAnalysis(object):
             p_mean = -sum(px*lpx)
         return p_mean
 
+def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean):
+    folder = 'tmp'
+    if os.path.exists(folder) == False:
+        os.mkdir(folder)
+    shutil.copy2("labelsw_bunch2", os.path.join(folder, "labelsw_bunch2"))
+    os.chdir('tmp')
+    yb_stack = yb.flatten()
+    rfcls = np.zeros(num_sample)
+    ybcls = np.hstack((rfcls, yb_stack))
+    with open('zb.cls', mode='w') as f:
+        f.write(ybcls)
+    cmd = './labelsw_bunch2 -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b ' + str(n_bootstrap + 1) + ' -2'
+    os.system(cmd + ' < tmp_res')
+    idx = int(open('tmp_res', 'r').read())
+    os.remove('tmp_res')
+
+    rfcls = yb_stack[(num_sample * (idx - 1) + 1):(num_sample * idx)]
+    k_rf = np.unique(rfcls).shape[0]
+    ybcls = np.hstack((rfcls, yb_stack))
+    with open('zb.cls', mode='w') as f:
+        f.write(ybcls)
+    cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(n_bootstrap + 1) + \
+          " -t " + str(threshold) + " -a " + str(alpha) + " -2"
+    os.system(cmd)
+    dist = np.loadtxt("zb.par")
+    wt = np.loadtxt("zb.wt")
+
+    os.chdir("..")
+    m = dist[:, 0]
+    p_raw = []
+    for i in xrange(n_bootstrap):
+        p_raw[i] = OneHotEncoder().fit_transform(yb_stack[i, :])
+
+    p_tild = np.zeros((num_sample, k_rf * n_bootstrap))
+    p_tild_sum = np.zeros((num_sample, k_rf))
+
+    for i in xrange(n_bootstrap):
+        wt_sub = wt[(sum(m[0:(i - 1)])):sum(m[0:i]), ]
+        wt_row_sums = wt_sub.sum(axis=1)
+        wt_row_sums[np.where(wt_row_sums) == 0] = 1
+        wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
+        p_tild = np.matmul(p_raw[i], wt_sub)
+        p_tild_sum = p_tild_sum + p_tild
+
+    p_bar = p_tild_sum / n_bootstrap
+    if return_mean == 1:
+        y_mean = np.argmax(p_bar, axis=1)
+    else:
+        y_mean = rfcls
+
+    ########### Confident point set #######################
+    rfcls = y_mean
+    k_rf = np.unique(rfcls).shape[0]
+    ybcls = np.hstack((rfcls, yb_stack))
+    with open('zb.cls', mode='w') as f:
+        f.write(ybcls)
+    cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(n_bootstrap + 1) + \
+          " -t " + str(threshold) + " -a " + str(alpha) + " -2"
+    os.system(cmd)
+    res = np.loadtxt("zb.ls")
+    clst = np.loadtxt('zb.par')[:,0]
+    dist = np.loadtxt('zb.par')[:,1]
+
+    cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_mean, len=num_sample)
+    cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
+    Interset = cluster_analy.interset(sample_id, cluster_id)
+
+    confidentset = {}
+    with open('zb.summary') as f:
+        idx = f.readlines()
+    for i in xrange(k_rf):
+        print '******************************' + str(i)
+        idx_tmp = np.fromstring(idx[i+2*n_bootstrap][2:-1], sep = ' ')
+        confidentset[i] = idx_tmp
+    os.chdir('..')
+    os.system('rm -r tmp')
+    return y_mean, confidentset, Interset, cluster_id, dist, cluster_analy
 
 """
 test_code:
