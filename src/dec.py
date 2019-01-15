@@ -2,9 +2,9 @@ import os
 import sys
 import numpy as np
 import keras.backend as K
-from keras.engine.topology import Layer, InputSpec
 from keras.models import Model, load_model
-from keras.layers import Dense, Dropout, Input
+from keras.layers import Dense, Dropout, Input, concatenate, LSTM, Embedding, Conv1D, MaxPooling1D, Flatten, Dropout, Bidirectional, Layer
+from keras.utils import to_categorical
 from sklearn.cluster import KMeans
 from util import metrics
 from util import ProgressBar
@@ -12,6 +12,28 @@ from time import sleep
 from keras.optimizers import SGD
 
 metrics = metrics()
+
+class ClusteringLayer(Layer):
+    def __init__(self, output_dim, **kwargs):
+        self.output_dim = output_dim
+        super(ClusteringLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[1], self.output_dim),
+                                      initializer='glorot_uniform',
+                                      name='kernel',
+                                      trainable=True)
+        super(ClusteringLayer, self).build(input_shape)
+
+    def call(self, x):
+        q1 = 1.0 / (1.0 + (K.sum(K.square(K.expand_dims(x, -1) - self.kernel), axis=1) / 1.0))
+        q2 = q1 ** ((1.0 + 1.0) / 2.0)
+        q = K.transpose(K.transpose(q2) / K.sum(q2, axis=1))
+        return q
+
+    def compute_output_shape(self, input_shape):
+        return (input_shape[0], self.output_dim)
+
 
 def build_ae(hidden_neurons, rate = 0.5, act='relu'):
     n_layers = len(hidden_neurons) - 1
@@ -37,47 +59,6 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
             #     Y = Dropout(rate)(Y)
 
     return Model(inputs=X, outputs=Y, name='AE')
-
-
-class ClusteringLayer(Layer):
-    def __init__(self, n_clusters, input_dim=None, weights=None, alpha=1.0, **kwargs):
-        super(ClusteringLayer, self).__init__(**kwargs)
-        self.n_clusters = n_clusters
-        self.input_dim = input_dim
-        self.alpha = alpha
-        self.initial_weights = weights
-        self.input_spec = [InputSpec(ndim=2)]
-
-        if self.input_dim:
-            kwargs['input_shape'] = (self.input_dim,)
-
-    def build(self, input_shape):
-        assert len(input_shape) == 2
-        input_dim = input_shape[1]
-        self.input_spec = [InputSpec(dtype=K.floatx(),
-                                     shape=(None, input_dim))]
-        self.clusters = self.add_weight((self.n_clusters, input_dim), initializer='glorot_uniform', name='clusters')
-        if self.initial_weights is not None:
-            self.set_weights(self.initial_weights)
-            del self.initial_weights
-        self.built = True
-        
-    def call(self, x, mask=None):
-        q = 1.0/(1.0 + (K.sum(K.square(K.expand_dims(x, 1) - self.clusters), axis=2) / self.alpha))
-        q = q**((self.alpha+1.0)/2.0)
-        q = K.transpose(K.transpose(q)/K.sum(q, axis=1))
-        return q
-
-    def get_output_shape(self, input_shape):
-        assert input_shape and len(input_shape) == 2
-        return (input_shape[0], self.clusters)
-
-    def get_config(self):
-        config = {'output_dim': self.clusters,
-                  'input_dim': self.input_dim}
-        base_config = super(ClusteringLayer, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
 
 class DeepEmbeddingClustering(object):
     def __init__(self, X, y, hidden_neurons, n_clusters, alpha=1.0):
@@ -201,5 +182,197 @@ class DeepEmbeddingClustering(object):
         acc = np.round(metrics.acc(y_test, y_pred), 5)
         nmi = np.round(metrics.nmi(y_test, y_pred), 5)
         ari = np.round(metrics.ari(y_test, y_pred), 5)
+        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+        return y_pred
+
+class dec_malware(object):
+    def __init__(self, data_path_1, data_path_2, n_clusters):
+        self.load_data(data_path_1, data_path_2)
+        self.n_clusters = n_clusters
+        self.model_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
+                        'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
+
+        self.build_model(dim_op=self.x_dex_op.shape[1], dim_per=self.x_dex_permission.shape[1],
+                         dim_sand=self.x_sandbox.shape[1])
+    def normalize(self, x):
+        x = (x - np.min(x, axis=0)) / (np.max(x, axis=0) - np.min(x, axis=0))
+        return x
+
+    def auxiliary_distribution(self, q):
+        p = q ** 2 / q.sum(0)
+        return (p.T / p.sum(1)).T
+
+    def predict_classes(self, X):
+        q = self.model.predict(X, verbose = 0)
+        return q.argmax(1)
+
+    def gen_bootstarp(self):
+        randidx = np.random.choice(self.y_fal.shape[0], self.y_fal.shape[0], replace=True)
+        x_dex_op = self.x_dex_op[randidx]
+        x_dex_permission = self.x_dex_permission[randidx]
+        x_sandbox = self.x_sandbox[randidx]
+        x_sandbox_1 = self.x_sandbox_1[randidx]
+        model_inputs = model_inputs = {'input_dex_op': x_dex_op, 'input_dex_permission': x_dex_permission,
+                        'input_sandbox': x_sandbox, 'input_sandbox_1': x_sandbox_1}
+        y_fal_1 = self.y_fal_1[randidx]
+        return model_inputs, y_fal_1
+
+    def load_data(self, data_path_1, data_path_2, use_two = 0, use_malware_only = 1):
+        recover_files = np.load(data_path_1)
+        dex = recover_files['x_train_dex']
+        x_opcode_count = dex[:,0:11+256+1]
+        self.x_dex_op = self.normalize(x_opcode_count)
+        self.x_dex_permission = dex[:,11+256+1:]
+        self.x_sandbox = recover_files['x_train__sandbox'].astype('float32')
+        self.y_fal_1 = recover_files['y_train_family']
+
+        if use_two == 1:
+            recover_files_2 = np.load(data_path_2)
+            dex_2 = recover_files_2['x_train_dex']
+            x_opcode_count = dex_2[:,0:11+256+1]
+            self.x_dex_op = np.vstack((self.x_dex_op,self.normalize(x_opcode_count)))
+            self.x_dex_permission = np.vstack((self.x_dex_permission, dex_2[:,11+256+1:]))
+            self.x_sandbox = np.vstack((self.x_sandbox, recover_files_2['x_train__sandbox'].astype('float32')))
+            self.y_fal_1 = np.concatenate((self.y_fal_1, recover_files_2['y_train_family']))
+
+        if use_malware_only == 1:
+            nonzero_row = np.where(self.y_fal_1==0)[0]
+            self.x_dex_op = np.delete(self.x_dex_op, nonzero_row, 0)
+            self.x_dex_permission = np.delete(self.x_dex_permission, nonzero_row, 0)
+            self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
+            self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
+
+        #print self.x_dex_op.shape
+        #print self.x_dex_permission.shape
+        #print self.x_sandbox.shape
+        #print self.y_fal_1.shape
+        #print self.y_fal.shape
+
+        # print self.y_fal_1.shape
+        # print np.where(self.y_fal_1==1)[0].shape[0]
+        # print np.where(self.y_fal_1==2)[0].shape[0]
+        # print np.where(self.y_fal_1==3)[0].shape[0]
+        # print np.where(self.y_fal_1==4)[0].shape[0]
+        # print np.where(self.y_fal_1==5)[0].shape[0]
+
+        # self.x_dex_op = self.x_dex_op[0:1000,]
+        # self.x_sandbox = self.x_sandbox[0:1000,]
+        # self.y_fal_1 = self.y_fal_1[0:1000, ]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000, ]
+        self.y_fal = to_categorical(self.y_fal_1)#[0:1000, ]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000, ]
+
+
+    def build_model(self, dim_op, dim_per, dim_sand):
+        x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
+        x_dex_permission = Input(shape=(dim_per,1), name='input_dex_permission')
+        x_sandbox = Input(shape=(dim_sand,), name='input_sandbox')
+        x_sandbox_1 = Input(shape=(dim_sand,1), name='input_sandbox_1')
+
+        x_dex_op_1 = Dense(200, input_dim=dim_op, activation='relu')(x_dex_op)
+        x_dex_op_1 = Dropout(0.25)(x_dex_op_1)
+        x_dex_permission_1 = Conv1D(filters=16, kernel_size=2, activation='relu')(x_dex_permission)
+        x_dex_permission_2 = MaxPooling1D(4)(x_dex_permission_1)
+        x_dex_permission_embedded = Flatten()(x_dex_permission_2)
+        x_embedded = concatenate([x_dex_op_1, x_dex_permission_embedded])
+        hidden_1 = Dense(100, activation='relu')(x_embedded)
+        hidden_1 = Dropout(0.25)(hidden_1)
+        x_sandbox_embedded = Embedding(201, 16, input_length = dim_sand)(x_sandbox)
+        hidden_sandbox_1 = Bidirectional(LSTM(units=10, activation='tanh', input_shape = (dim_sand, 16), return_sequences=1))(x_sandbox_embedded)
+        hidden_sandbox_2 = Bidirectional(LSTM(units=10, activation='tanh', input_shape = (dim_sand, 16), return_sequences=0))(hidden_sandbox_1)
+        hidden_1_merged = concatenate([hidden_1, hidden_sandbox_2])
+        hidden_2 = Dense(100, activation='relu')(hidden_1_merged)
+        hidden_2 = Dropout(0.25)(hidden_2)
+        hidden_3 = Dense(50, activation='relu')(hidden_2)
+        self.encoder = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = hidden_3)
+        cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
+        self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = cluster_layer)
+
+    def train(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir, use_pretrained, pretrained_dir, use_boostrap = 0):
+        self.model.compile(optimizer = optimizer, loss = 'kld')
+        if use_boostrap == 1:
+            model_inputs, y_fal_1 = self.gen_bootstarp(self.model_inputs)
+        else:
+            model_inputs = self.model_inputs
+            y_fal_1 = self.y_fal_1
+
+        if use_pretrained == 1:
+            pretrained_model = load_model(pretrained_dir)
+            acc = pretrained_model.evaluate(self.model_inputs, self.y_fal, verbose=True)
+            pretrained_model.layers.pop()
+            pretrained_model.layers.pop()
+            print 'Loss = %f', 'Accuracy = %f.' % (acc[0], acc[1])
+            self.encoder.set_weights(pretrained_model.get_weights())
+        else:
+            print '================================================='
+            print 'Initializing the cluster centers with k-means...'
+            print '================================================='
+            kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
+            y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
+            y_pred_last = np.copy(y_pred)
+            self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
+            #print kmeans.cluster_centers_
+            loss = 0
+            index = 0
+            index_array = np.arange(self.y_fal.shape[0])
+            if shuffle == True:
+                np.random.shuffle(index_array)
+
+            print '================================================='
+            print 'Start training ...'
+            print '================================================='
+
+            for ite in range(int(epochs)):
+                #print self.model.layers[-1].clusters.get_value()
+                if ite % update_interval == 0:
+                    if ite != 0 :
+                        bar.done()
+                    bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
+
+                    q = self.model.predict(model_inputs, verbose=0)
+                    p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
+
+                    # evaluate the clustering performance
+                    y_pred = q.argmax(1)
+                    acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
+                    nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
+                    ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
+                    loss = np.round(loss, 5)
+                    print '****************************************'
+                    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
+
+                    # check stop criterion
+                    delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                    y_pred_last = np.copy(y_pred)
+                    if ite > 0 and delta_label < tol:
+                        print '****************************************'
+                        print('delta_label ', delta_label, '< tol ', tol)
+                        print('Reached tolerance threshold. Stopping training.')
+                        break
+
+                idx = index_array[index * batch_size: min((index+1) * batch_size, self.y_fal.shape[0])]
+                batch_inputs = {'input_dex_op': self.x_dex_op[idx], 'input_dex_permission': self.x_dex_permission[idx],
+                                'input_sandbox': self.x_sandbox[idx], 'input_sandbox_1': self.x_sandbox_1[idx]}
+                loss = self.model.train_on_batch(x=batch_inputs, y=p[idx])
+                index = index + 1 if (index + 1) * batch_size <= self.y_fal.shape[0] else 0
+                bar.current += 1
+                bar()
+                sleep(0.1)
+
+            # save the trained model
+            print '****************************************'
+            print('saving model to:', save_dir + '/DEC_model_final.h5')
+            print '****************************************'
+            #self.model.save_weights(save_dir + '/DEC_model_final.h5')
+        return 0
+
+    def test(self):
+        print '================================================='
+        print 'Start evaluate ...'
+        print '================================================='
+        y_pred = self.predict_classes(self.model_inputs)
+        acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
+        nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
+        ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return y_pred

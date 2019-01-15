@@ -5,7 +5,7 @@ os.environ["THEANO_FLAGS"] = "module=FAST_RUN,floatX=float32"
 import pandas as pd
 import numpy as np
 from scipy import io
-from dec import DeepEmbeddingClustering
+from dec import DeepEmbeddingClustering, dec_malware
 from dcn_tf import DeepClusteringNetwork
 from dcn_theano import test_SdC
 
@@ -13,7 +13,7 @@ from util import genaugbs, metrics, load_data
 from keras.optimizers import SGD
 metrics = metrics()
 
-def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
+def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
                using_own = False):
     batch = batch
     pre_epochs = pre_epochs
@@ -125,7 +125,64 @@ def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, f
             io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
     return 0
 
+def clustering_malware(data_path_1,
+                       data_path_2,
+                       n_clusters,
+                       batch_size,
+                       epochs,
+                       optimizer,
+                       update_interval,
+                       tol,
+                       shuffle,
+                       save_dir,
+                       use_pretrained,
+                       pretrained_dir):
+
+    malware_model = dec_malware(data_path_1, data_path_2, n_clusters)
+    malware_model.train(batch_size,
+                        epochs,
+                        optimizer,
+                        update_interval,
+                        tol,
+                        shuffle,
+                        save_dir,
+                        use_pretrained,
+                        pretrained_dir,
+                        use_boostrap = 0)
+    y_pred = malware_model.test()
+    io.savemat(save_dir+'/results', {'y_pred':y_pred})
+
+
+
+
 if __name__ == "__main__":
+
+    data_path_1 = '../results/malware/trace_train1.npz'
+    data_path_2 = '../results/malware/trace_train2.npz'
+    n_clusters = 5
+    batch_size = 3000
+    epochs = 200
+    optimizer = 'sgd'
+    update_interval = 10
+    tol = 1e-3
+    shuffle = True
+    save_dir = '../results/malware'
+    use_pretrained = 0
+    pretrained_dir = '../results/malware/dt_family_10.h5'
+    clustering_malware(data_path_1,
+                       data_path_2,
+                       n_clusters,
+                       batch_size,
+                       epochs,
+                       optimizer,
+                       update_interval,
+                       tol,
+                       shuffle,
+                       save_dir,
+                       use_pretrained,
+                       pretrained_dir)
+
+    """
     dataset = 'mnist'
     n_bootstraps = 10
     method = 'dcn'
@@ -157,4 +214,5 @@ if __name__ == "__main__":
 
     clustering(X =X, y=y, n_clusters = n_clusters, n_bootstrep=n_bootstraps, method = method, path = path,
                batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
+    """
 
