@@ -8,12 +8,12 @@ from scipy import io
 from dec import DeepEmbeddingClustering, dec_malware
 from dcn_tf import DeepClusteringNetwork
 from dcn_theano import test_SdC
-
+from keras.utils import to_categorical
 from util import genaugbs, metrics, load_data
 from keras.optimizers import SGD
 metrics = metrics()
 
-def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
+def clustering(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
                using_own = False):
     batch = batch
     pre_epochs = pre_epochs
@@ -30,8 +30,8 @@ def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epo
         print '================================'
 
         path_dec = os.path.join(path, 'dec_16')
-        hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
-        tol = 1e-3
+        hidden_neurons = [X.shape[-1], 500, 100, 10, n_clusters]
+        tol = 1e-8
 
         if os.path.exists(path_dec) == False:
             os.system('mkdir ' + path_dec)
@@ -96,7 +96,7 @@ def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epo
 
             if using_own == True:
                 print 'Using tensorflow model...'
-                hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
+                hidden_neurons = [X.shape[-1], 500, 500, 100, n_clusters]
                 lr = 0.001
                 lbd = 4
 
@@ -113,13 +113,13 @@ def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epo
                           'lbd': 1,  # reconstruction
                           'beta': 1,
                           'pretraining_epochs': pre_epochs,
-                          'pretrain_lr_base': 0.0001,
+                          'pretrain_lr_base': 0.01,
                           'mu': 0.9,
                           'finetune_lr': 0.0001,
                           'training_epochs': finetune_epochs,
                           'batch_size': 256,
                           'nClass': n_clusters,
-                          'hidden_dim': [500, 500, 2000, 10],
+                          'hidden_dim': [500, 300, 100, 5],
                           'diminishing': False}
                 pred_test = test_SdC(**config)
             io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
@@ -152,19 +152,15 @@ def clustering_malware(data_path_1,
     y_pred = malware_model.test()
     io.savemat(save_dir+'/results', {'y_pred':y_pred})
 
-
-
-
 if __name__ == "__main__":
 
-    data_path_1 = '../results/malware/trace_train1.npz'
-    data_path_2 = '../results/malware/trace_train2.npz'
+    """
     n_clusters = 5
-    batch_size = 3000
+    batch_size = 100
     epochs = 200
-    optimizer = 'sgd'
-    update_interval = 10
-    tol = 1e-3
+    optimizer = 'rmsprop'
+    update_interval = 20
+    tol = 1e-8
     shuffle = True
     save_dir = '../results/malware'
     use_pretrained = 0
@@ -181,21 +177,21 @@ if __name__ == "__main__":
                        save_dir,
                        use_pretrained,
                        pretrained_dir)
-
     """
-    dataset = 'mnist'
-    n_bootstraps = 10
+
+    dataset = 'malware'
+    n_bootstraps = 1
     method = 'dcn'
     test = 1
     X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
 
     if test == 1:
-        n_bootstraps = 2
-        batch = 256
-        pre_epochs = 0
-        finetune_epochs = 0
-        update_interval = 2
-        using_own = False
+        n_bootstraps = 1
+        batch = 100
+        pre_epochs = 500
+        finetune_epochs = 300
+        update_interval = 20
+        using_own = True
 
     else:
         n_bootstraps = 10
@@ -213,6 +209,6 @@ if __name__ == "__main__":
             using_own = False
 
     clustering(X =X, y=y, n_clusters = n_clusters, n_bootstrep=n_bootstraps, method = method, path = path,
-               batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
-    """
+               batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval, using_own = using_own)
+
 

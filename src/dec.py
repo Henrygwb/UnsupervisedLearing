@@ -70,8 +70,8 @@ class DeepEmbeddingClustering(object):
         self.ae = build_ae(hidden_neurons)
 
     def pretrain(self, batch_size, epochs, save_dir):
-        self.ae.compile(optimizer=SGD(lr=1, momentum=0.9), loss = 'mse')
-        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=0)
+        self.ae.compile(optimizer='adam', loss = 'mse')
+        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=1)
         self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)
 
@@ -242,26 +242,19 @@ class dec_malware(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        #print self.x_dex_op.shape
-        #print self.x_dex_permission.shape
-        #print self.x_sandbox.shape
-        #print self.y_fal_1.shape
-        #print self.y_fal.shape
+        self.x_dex_op = self.x_dex_op[0:1000,]
+        self.x_sandbox = self.x_sandbox[0:1000,]
+        self.y_fal_1 = self.y_fal_1[0:1000, ]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000, ]
+        self.y_fal = to_categorical(self.y_fal_1)[0:1000, ]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000, ]
 
-        # print self.y_fal_1.shape
-        # print np.where(self.y_fal_1==1)[0].shape[0]
-        # print np.where(self.y_fal_1==2)[0].shape[0]
-        # print np.where(self.y_fal_1==3)[0].shape[0]
-        # print np.where(self.y_fal_1==4)[0].shape[0]
-        # print np.where(self.y_fal_1==5)[0].shape[0]
-
-        # self.x_dex_op = self.x_dex_op[0:1000,]
-        # self.x_sandbox = self.x_sandbox[0:1000,]
-        # self.y_fal_1 = self.y_fal_1[0:1000, ]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000, ]
-        self.y_fal = to_categorical(self.y_fal_1)#[0:1000, ]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000, ]
-
+        print self.y_fal_1.shape
+        print np.where(self.y_fal_1==0)[0].shape[0]
+        print np.where(self.y_fal_1==1)[0].shape[0]
+        print np.where(self.y_fal_1==2)[0].shape[0]
+        print np.where(self.y_fal_1==3)[0].shape[0]
+        print np.where(self.y_fal_1==4)[0].shape[0]
 
     def build_model(self, dim_op, dim_per, dim_sand):
         x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
@@ -310,7 +303,7 @@ class dec_malware(object):
             kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
             y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
             y_pred_last = np.copy(y_pred)
-            self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
+            #self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
             #print kmeans.cluster_centers_
             loss = 0
             index = 0
