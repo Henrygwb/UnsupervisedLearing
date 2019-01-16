@@ -8,7 +8,7 @@ from time import sleep
 from util import metrics
 metrics = metrics()
 
-class DeepClusteringNetwork(object):
+class DCN(object):
     def __init__(self, X, y, hidden_neurons, n_clusters, lbd, mode = 'pretrain', config = tf.ConfigProto()):
         self.X = X
         self.y = y
@@ -121,7 +121,7 @@ class DeepClusteringNetwork(object):
         center_new.astype(np.float32)
         return idx, center_new, count
 
-    def train(self, batch_size, pre_epochs, finetune_epochs, update_interval, pre_save_dir, save_dir, pretrain, lr, cen_lr = 100, tol=1e-3):
+    def fit(self, batch_size, pre_epochs, finetune_epochs, update_interval, pre_save_dir, save_dir, pretrain, lr, cen_lr = 100, tol=1e-3):
         if pretrain == True:
             print '================================================='
             print 'Pretraining AE...'
@@ -253,7 +253,7 @@ class DeepClusteringNetwork(object):
 
         return 0
 
-    def test(self, X_test, y_test):
+    def predict(self, X_test, y_test):
         print '================================================='
         print 'Strat testing...'
         print '================================================='

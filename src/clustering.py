@@ -5,8 +5,8 @@ os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import pandas as pd
 import numpy as np
 from scipy import io
-from dec import DeepEmbeddingClustering, dec_malware
-from dcn_tf import DeepClusteringNetwork
+from dec import DEC, DEC_MALWARE
+from dcn_tf import DCN
 from dcn_theano import test_SdC
 from keras.utils import to_categorical
 from util import genaugbs, metrics, load_data
@@ -58,8 +58,8 @@ def clustering(dataset,
                 os.system('mkdir '+dir_path)
             if method == 'dec':
                 optimizer = SGD(0.01, 0.9)
-                dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
-                dec.train(optimizer=optimizer,
+                dec = DEC(X_bs, y_bs, hidden_neurons, n_clusters)
+                dec.fit(optimizer=optimizer,
                           batch_size=batch,
                           pre_epochs = pre_epochs,
                           epochs=finetune_epochs,
@@ -71,7 +71,7 @@ def clustering(dataset,
                           pretrain = pretrain)
                 dec.evaluate()
 
-                pred_test = dec.test(X_test = X, y_test = y)
+                pred_test = dec.predict(X_test = X, y_test = y)
                 io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
 
             elif method == 'dcn':
@@ -79,8 +79,8 @@ def clustering(dataset,
                     print 'Using tensorflow model...'
                     lr = 0.001
                     lbd = 4
-                    dcn = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
-                    dcn.train(batch_size=batch,
+                    dcn = DCN(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
+                    dcn.fit(batch_size=batch,
                               pre_epochs=pre_epochs,
                               finetune_epochs=finetune_epochs,
                               update_interval=update_interval,
@@ -88,7 +88,7 @@ def clustering(dataset,
                               save_dir=dir_path,
                               lr=lr,
                               pretrain = pretrain)
-                    pred = dcn.test(X, y)
+                    pred = dcn.predict(X, y)
                 else:
                     print 'Using theano model...'
                     config = {'train_x': X_bs,
@@ -132,8 +132,8 @@ def clustering(dataset,
             dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-                malware_model = dec_malware(data_path_1, data_path_2, n_clusters)
-                malware_model.train(batch_size = batch,
+                malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters)
+                malware_model.fit(batch_size = batch,
                                     epochs = finetune_epochs,
                                     optimizer = optimizer_malware,
                                     update_interval = update_interval,
@@ -142,7 +142,7 @@ def clustering(dataset,
                                     save_dir = dir_path,
                                     pretrained_dir = pretrained_dir,
                                     use_boostrap = use_boostrap)
-                y_pred = malware_model.test()
+                y_pred = malware_model.predict()
                 io.savemat(dir_path+'/results', {'y_pred':y_pred})
     return 0
 

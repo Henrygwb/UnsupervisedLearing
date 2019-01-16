@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import keras.backend as K
 from keras.models import Model, load_model
-from keras.layers import Dense, Dropout, Input, concatenate, LSTM, Embedding, Conv1D, MaxPooling1D, Flatten, Dropout, Bidirectional, Layer
+from keras.layers import Dense, Input, concatenate, LSTM, Embedding, Conv1D, MaxPooling1D, Flatten, Dropout, Bidirectional, Layer
 from keras.utils import to_categorical
 from sklearn.cluster import KMeans
 from util import metrics
@@ -60,7 +60,7 @@ def build_ae(hidden_neurons, rate = 0.5, act='relu'):
 
     return Model(inputs=X, outputs=Y, name='AE')
 
-class DeepEmbeddingClustering(object):
+class DEC(object):
     def __init__(self, X, y, hidden_neurons, n_clusters, alpha=1.0):
         self.X = X
         self.y = y
@@ -86,7 +86,7 @@ class DeepEmbeddingClustering(object):
         p = q ** 2 / q.sum(0)
         return (p.T / p.sum(1)).T
 
-    def train(self, optimizer, batch_size, pre_epochs, epochs, tol, update_interval, pre_save_dir, save_dir, shuffle,
+    def fit(self, optimizer, batch_size, pre_epochs, epochs, tol, update_interval, pre_save_dir, save_dir, shuffle,
               pretrain = False):
         if pretrain == False:
             self.ae = load_model(os.path.join(pre_save_dir, 'pretrained_ae.h5'))
@@ -174,7 +174,7 @@ class DeepEmbeddingClustering(object):
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return 0
 
-    def test(self, X_test, y_test):
+    def predict(self, X_test, y_test):
         print '================================================='
         print 'Start evaluate ...'
         print '================================================='
@@ -186,7 +186,7 @@ class DeepEmbeddingClustering(object):
         return y_pred
 
 
-class dec_malware(object):
+class DEC_MALWARE(object):
     def __init__(self, data_path_1, data_path_2, n_clusters):
         self.load_data(data_path_1, data_path_2)
         self.n_clusters = n_clusters
@@ -282,7 +282,7 @@ class dec_malware(object):
         cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
         self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = cluster_layer)
 
-    def train(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir,  pretrained_dir, use_boostrap = 0, use_pretrained = 1):
+    def fit(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir,  pretrained_dir, use_boostrap = 0, use_pretrained = 1):
         self.model.compile(optimizer = optimizer, loss = 'kld')
         if use_boostrap == 1:
             model_inputs, y_fal_1 = self.gen_bootstarp()
@@ -360,7 +360,7 @@ class dec_malware(object):
         #self.model.save_weights(save_dir + '/DEC_model_final.h5')
         return 0
 
-    def test(self):
+    def predict(self):
         print '================================================='
         print 'Start evaluate ...'
         print '================================================='
