@@ -116,7 +116,7 @@ def clustering(dataset,
 
         data_path_1 = '../results/malware/trace1_train1.npz'
         data_path_2 = '../results/malware/trace1_train2.npz'
-        path_method = '../results/malware_'+str(n_clusters)
+        path_method = '../results/malware/cluster_'+str(n_clusters)
         pretrained_dir = '../results/malware/pretrained_malware.h5'
         if os.path.exists(path_method) == False:
             os.system('mkdir ' + path_method)
