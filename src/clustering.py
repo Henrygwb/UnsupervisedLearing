@@ -1,7 +1,7 @@
 import os
-os.environ["THEANO_FLAGS"] = "module=FAST_RUN,floatX=float32"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
+#os.environ["THEANO_FLAGS"] = "module=FAST_RUN,floatX=float32"
 #device=gpu0,
-#os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import pandas as pd
 import numpy as np
 from scipy import io
@@ -184,8 +184,8 @@ if __name__ == "__main__":
     hidden_neurons = []
     tol = 1e-6
     pre_epochs = 0
-    finetune_epochs = 2
-    update_interval = 1
+    finetune_epochs = 200
+    update_interval = 10
 
 
     clustering(dataset,

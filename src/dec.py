@@ -243,12 +243,12 @@ class dec_malware(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        self.x_dex_op = self.x_dex_op[0:1000,]
-        self.x_sandbox = self.x_sandbox[0:1000,]
-        self.y_fal_1 = self.y_fal_1[0:1000, ]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000, ]
-        self.y_fal = to_categorical(self.y_fal_1)[0:1000, ]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000, ]
+        self.x_dex_op = self.x_dex_op
+        self.x_sandbox = self.x_sandbox
+        self.y_fal_1 = self.y_fal_1
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)
+        self.y_fal = to_categorical(self.y_fal_1)
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)
 
         print self.y_fal_1.shape
         print np.where(self.y_fal_1==0)[0].shape[0]
