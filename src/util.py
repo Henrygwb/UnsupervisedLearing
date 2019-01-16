@@ -75,8 +75,7 @@ def load_data(path, dataset):
         X = io.loadmat(file)['X'][0:1000]
         y = io.loadmat(file)['y'].flatten()[0:1000]
         n_clusters = 5
-
-    return X[:,0:300], y, n_clusters, path
+    return X, y, path
 
 
 class DimReduce(object):
@@ -218,11 +217,3 @@ class ProgressBar(object):
         self.current = self.total
         self()
         print('', file=self.output)
-
-
-
-### Test gendata
-# n = 10
-# p = 2
-# c = 4
-# X, y = gendata(n,p,c)
