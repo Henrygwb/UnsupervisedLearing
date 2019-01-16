@@ -1,42 +1,48 @@
 import os
-os.environ["THEANO_FLAGS"] = "module=FAST_RUN,floatX=float32"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
+#os.environ["THEANO_FLAGS"] = "module=FAST_RUN,floatX=float32"
 #device=gpu0,
-#os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import pandas as pd
 import numpy as np
 from scipy import io
 from dec import DeepEmbeddingClustering, dec_malware
 from dcn_tf import DeepClusteringNetwork
 from dcn_theano import test_SdC
-
+from keras.utils import to_categorical
 from util import genaugbs, metrics, load_data
 from keras.optimizers import SGD
 metrics = metrics()
 
-def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epochs, finetune_epochs, update_interval,
+def clustering(dataset,
+               n_clusters,
+               n_bootstrap,
+               method,
+               optimizer_malware,
+               batch,
+               hidden_neurons,
+               tol,
+               pre_epochs,
+               finetune_epochs,
+               update_interval,
                using_own = False):
-    batch = batch
-    pre_epochs = pre_epochs
-    finetune_epochs = finetune_epochs
-    update_interval = update_interval
 
-    if method == 'dec':
+    if dataset == 'mnist' or dataset == 'rcv':
         print '================================'
-        print '================================'
-        print '================================'
-        print 'Using ICML_16 dec...'
-        print '================================'
-        print '================================'
+        print 'Training ' + dataset + ' ...'
         print '================================'
 
-        path_dec = os.path.join(path, 'dec_16')
-        hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
-        tol = 1e-3
+        X, y, path = load_data(path="../results", dataset=dataset)
 
-        if os.path.exists(path_dec) == False:
-            os.system('mkdir ' + path_dec)
+        print '================================'
+        print 'Using' + method + ' for cluster number ' + str(n_clusters) + ' ...'
+        print '================================'
+        dir = method+'_'+str(n_clusters)
+        path_method = os.path.join(path, dir)
 
-        for i in xrange(n_bootstrep):
+        if os.path.exists(path_method) == False:
+            os.system('mkdir ' + path_method)
+
+        for i in xrange(n_bootstrap):
             if i == 0:
                 pretrain = True
                 X_bs, y_bs = X, y
@@ -45,174 +51,152 @@ def clustering_mnist(X, y, n_clusters, n_bootstrep, method, path, batch, pre_epo
                 pretrain = False
                 X_bs, y_bs = genaugbs(X, y)
             print '********************************'
-            print '********************************'
-            print '********************************'
             print 'Bootstrap sample time %d.' % i
             print '********************************'
-            print '********************************'
-            print '********************************'
-            dir_path = os.path.join(path_dec, str(i)+'_bs')
+            dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            optimizer = SGD(0.01, 0.9)
-            dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
-            dec.train(optimizer=optimizer, batch_size=batch, pre_epochs = pre_epochs, epochs=finetune_epochs, tol= tol,
-                           update_interval=update_interval, pre_save_dir= path_dec, save_dir=dir_path, shuffle= False, pretrain = pretrain)
-            dec.evaluate()
+            if method == 'dec':
+                optimizer = SGD(0.01, 0.9)
+                dec = DeepEmbeddingClustering(X_bs, y_bs, hidden_neurons, n_clusters)
+                dec.train(optimizer=optimizer,
+                          batch_size=batch,
+                          pre_epochs = pre_epochs,
+                          epochs=finetune_epochs,
+                          tol= tol,
+                          update_interval=update_interval,
+                          pre_save_dir= path_method,
+                          save_dir=dir_path,
+                          shuffle= True,
+                          pretrain = pretrain)
+                dec.evaluate()
 
-            pred_test = dec.test(X_test = X, y_test = y)
-            io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
+                pred_test = dec.test(X_test = X, y_test = y)
+                io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
 
-    elif method == 'dcn':
+            elif method == 'dcn':
+                if using_own == True:
+                    print 'Using tensorflow model...'
+                    lr = 0.001
+                    lbd = 4
+                    dcn = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
+                    dcn.train(batch_size=batch,
+                              pre_epochs=pre_epochs,
+                              finetune_epochs=finetune_epochs,
+                              update_interval=update_interval,
+                              pre_save_dir=path_method,
+                              save_dir=dir_path,
+                              lr=lr,
+                              pretrain = pretrain)
+                    pred = dcn.test(X, y)
+                else:
+                    print 'Using theano model...'
+                    config = {'train_x': X_bs,
+                              'train_y': y_bs,
+                              'test_x': X,
+                              'test_y': y,
+                              'lbd': 1,  # reconstruction
+                              'beta': 1,
+                              'pretraining_epochs': pre_epochs,
+                              'pretrain_lr_base': 0.01,
+                              'mu': 0.9,
+                              'finetune_lr': 0.0001,
+                              'training_epochs': finetune_epochs,
+                              'batch_size': 256,
+                              'nClass': n_clusters,
+                              'hidden_dim': [500, 300, 100, 5],
+                              'diminishing': False}
+                    pred = test_SdC(**config)
+                io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred})
+
+    elif dataset == 'malware':
         print '================================'
-        print '================================'
-        print '================================'
-        print 'Using ICML_17 dcn...'
-        print '================================'
-        print '================================'
+        print 'Training ' + dataset + ' for cluster number ' + str(n_clusters) + ' ...'
         print '================================'
 
-        path_dcn = os.path.join(path, 'dcn_17')
-        if os.path.exists(path_dcn) == False:
-            os.system('mkdir ' + path_dcn)
+        data_path_1 = '../results/malware/trace1_train1.npz'
+        data_path_2 = '../results/malware/trace1_train2.npz'
+        path_method = '../results/malware/cluster_'+str(n_clusters)
+        pretrained_dir = '../results/malware/pretrained_malware.h5'
+        if os.path.exists(path_method) == False:
+            os.system('mkdir ' + path_method)
 
-        for i in xrange(n_bootstrep):
+        for i in xrange(n_bootstrap):
             if i == 0:
-                pretrain = True
-                X_bs, y_bs = X, y
+                use_boostrap = 0
             else:
-                pretrain = False
-                X_bs, y_bs = genaugbs(X, y)
-            print '********************************'
-            print '********************************'
+                use_boostrap = 1
             print '********************************'
             print 'Bootstrap sample time %d.' % i
             print '********************************'
-            print '********************************'
-            print '********************************'
-            dir_path = os.path.join(path_dcn, str(i)+'_bs')
+            dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-
-            if using_own == True:
-                print 'Using tensorflow model...'
-                hidden_neurons = [X.shape[-1], 500, 500, 2000, n_clusters]
-                lr = 0.001
-                lbd = 4
-
-                dcn_test = DeepClusteringNetwork(X=X_bs, y=y_bs, hidden_neurons=hidden_neurons, n_clusters=n_clusters, lbd=lbd)
-                dcn_test.train(batch_size=batch, pre_epochs=pre_epochs, finetune_epochs=finetune_epochs,update_interval=update_interval,
-                           pre_save_dir=path_dcn, save_dir=dir_path, lr=lr, pretrain = pretrain)
-                pred_test = dcn_test.test(X, y)
-            else:
-                print 'Using theano model...'
-                config = {'train_x': X_bs,
-                          'train_y': y_bs,
-                          'test_x': X,
-                          'test_y': y,
-                          'lbd': 1,  # reconstruction
-                          'beta': 1,
-                          'pretraining_epochs': pre_epochs,
-                          'pretrain_lr_base': 0.0001,
-                          'mu': 0.9,
-                          'finetune_lr': 0.0001,
-                          'training_epochs': finetune_epochs,
-                          'batch_size': 256,
-                          'nClass': n_clusters,
-                          'hidden_dim': [500, 500, 2000, 10],
-                          'diminishing': False}
-                pred_test = test_SdC(**config)
-            io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
+                malware_model = dec_malware(data_path_1, data_path_2, n_clusters)
+                malware_model.train(batch_size = batch,
+                                    epochs = finetune_epochs,
+                                    optimizer = optimizer_malware,
+                                    update_interval = update_interval,
+                                    tol = tol,
+                                    shuffle = True,
+                                    save_dir = dir_path,
+                                    pretrained_dir = pretrained_dir,
+                                    use_boostrap = use_boostrap)
+                y_pred = malware_model.test()
+                io.savemat(dir_path+'/results', {'y_pred':y_pred})
     return 0
-
-def clustering_malware(data_path_1,
-                       data_path_2,
-                       n_clusters,
-                       batch_size,
-                       epochs,
-                       optimizer,
-                       update_interval,
-                       tol,
-                       shuffle,
-                       save_dir,
-                       use_pretrained,
-                       pretrained_dir):
-
-    malware_model = dec_malware(data_path_1, data_path_2, n_clusters)
-    malware_model.train(batch_size,
-                        epochs,
-                        optimizer,
-                        update_interval,
-                        tol,
-                        shuffle,
-                        save_dir,
-                        use_pretrained,
-                        pretrained_dir,
-                        use_boostrap = 0)
-    y_pred = malware_model.test()
-    io.savemat(save_dir+'/results', {'y_pred':y_pred})
-
-
 
 
 if __name__ == "__main__":
-
-    data_path_1 = '../results/malware/trace_train1.npz'
-    data_path_2 = '../results/malware/trace_train2.npz'
-    n_clusters = 5
-    batch_size = 3000
-    epochs = 200
-    optimizer = 'sgd'
-    update_interval = 10
-    tol = 1e-3
-    shuffle = True
-    save_dir = '../results/malware'
-    use_pretrained = 0
-    pretrained_dir = '../results/malware/dt_family_10.h5'
-    clustering_malware(data_path_1,
-                       data_path_2,
-                       n_clusters,
-                       batch_size,
-                       epochs,
-                       optimizer,
-                       update_interval,
-                       tol,
-                       shuffle,
-                       save_dir,
-                       use_pretrained,
-                       pretrained_dir)
-
     """
     dataset = 'mnist'
+    hidden_neurons = [784, 500, 500, 2000, n_clusters]
     n_bootstraps = 10
-    method = 'dcn'
-    test = 1
-    X, y, n_clusters, path = load_data(path="../results", dataset=dataset)
-
-    if test == 1:
-        n_bootstraps = 2
+    if method == 'dec':
         batch = 256
-        pre_epochs = 0
-        finetune_epochs = 0
-        update_interval = 2
+        pre_epochs = 300
+        finetune_epochs = 2e4
+        update_interval = 140
+
+    elif method == 'dcn':
+        batch = 256
+        pre_epochs = 250
+        finetune_epochs = 300
+        update_interval = 20
         using_own = False
 
-    else:
-        n_bootstraps = 10
-        if method == 'dec':
-            batch = 256
-            pre_epochs = 300
-            finetune_epochs = 2e4
-            update_interval = 140
-
-        elif method == 'dcn':
-            batch = 256
-            pre_epochs = 250
-            finetune_epochs = 300
-            update_interval = 20
-            using_own = False
-
-    clustering(X =X, y=y, n_clusters = n_clusters, n_bootstrep=n_bootstraps, method = method, path = path,
-               batch=batch, pre_epochs = pre_epochs, finetune_epochs = finetune_epochs, update_interval = update_interval)
+    if test == 1:
+        n_bootstraps = 1
+        batch = 100
+        pre_epochs = 500
+        finetune_epochs = 300
+        update_interval = 20
+        using_own = True
     """
 
+    dataset = 'malware'
+    #n_clusters = [3,4,5,6]
+    n_clusters = 4
+    n_bootstrap = 3
+    method = 'dec_malware'
+    optimizer_malware = 'adam'
+    batch = 1000
+    hidden_neurons = []
+    tol = 1e-6
+    pre_epochs = 0
+    finetune_epochs = 200
+    update_interval = 10
+
+
+    clustering(dataset,
+                n_clusters,
+                n_bootstrap,
+                method,
+                optimizer_malware,
+                batch,
+                hidden_neurons,
+                tol,
+                pre_epochs,
+                finetune_epochs,
+                update_interval,
+                using_own=False)

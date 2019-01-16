@@ -70,8 +70,8 @@ class DeepEmbeddingClustering(object):
         self.ae = build_ae(hidden_neurons)
 
     def pretrain(self, batch_size, epochs, save_dir):
-        self.ae.compile(optimizer=SGD(lr=1, momentum=0.9), loss = 'mse')
-        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=0)
+        self.ae.compile(optimizer='adam', loss = 'mse')
+        self.ae.fit(self.X, self.X, batch_size = batch_size, epochs = epochs, verbose=1)
         self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)
 
@@ -185,6 +185,7 @@ class DeepEmbeddingClustering(object):
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return y_pred
 
+
 class dec_malware(object):
     def __init__(self, data_path_1, data_path_2, n_clusters):
         self.load_data(data_path_1, data_path_2)
@@ -212,7 +213,7 @@ class dec_malware(object):
         x_dex_permission = self.x_dex_permission[randidx]
         x_sandbox = self.x_sandbox[randidx]
         x_sandbox_1 = self.x_sandbox_1[randidx]
-        model_inputs = model_inputs = {'input_dex_op': x_dex_op, 'input_dex_permission': x_dex_permission,
+        model_inputs = {'input_dex_op': x_dex_op, 'input_dex_permission': x_dex_permission,
                         'input_sandbox': x_sandbox, 'input_sandbox_1': x_sandbox_1}
         y_fal_1 = self.y_fal_1[randidx]
         return model_inputs, y_fal_1
@@ -242,26 +243,19 @@ class dec_malware(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        #print self.x_dex_op.shape
-        #print self.x_dex_permission.shape
-        #print self.x_sandbox.shape
-        #print self.y_fal_1.shape
-        #print self.y_fal.shape
+        self.x_dex_op = self.x_dex_op
+        self.x_sandbox = self.x_sandbox
+        self.y_fal_1 = self.y_fal_1
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)
+        self.y_fal = to_categorical(self.y_fal_1)
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)
 
-        # print self.y_fal_1.shape
-        # print np.where(self.y_fal_1==1)[0].shape[0]
-        # print np.where(self.y_fal_1==2)[0].shape[0]
-        # print np.where(self.y_fal_1==3)[0].shape[0]
-        # print np.where(self.y_fal_1==4)[0].shape[0]
-        # print np.where(self.y_fal_1==5)[0].shape[0]
-
-        # self.x_dex_op = self.x_dex_op[0:1000,]
-        # self.x_sandbox = self.x_sandbox[0:1000,]
-        # self.y_fal_1 = self.y_fal_1[0:1000, ]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000, ]
-        self.y_fal = to_categorical(self.y_fal_1)#[0:1000, ]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000, ]
-
+        print self.y_fal_1.shape
+        print np.where(self.y_fal_1==0)[0].shape[0]
+        print np.where(self.y_fal_1==1)[0].shape[0]
+        print np.where(self.y_fal_1==2)[0].shape[0]
+        print np.where(self.y_fal_1==3)[0].shape[0]
+        print np.where(self.y_fal_1==4)[0].shape[0]
 
     def build_model(self, dim_op, dim_per, dim_sand):
         x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
@@ -288,82 +282,82 @@ class dec_malware(object):
         cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
         self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = cluster_layer)
 
-    def train(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir, use_pretrained, pretrained_dir, use_boostrap = 0):
+    def train(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir,  pretrained_dir, use_boostrap = 0, use_pretrained = 1):
         self.model.compile(optimizer = optimizer, loss = 'kld')
         if use_boostrap == 1:
-            model_inputs, y_fal_1 = self.gen_bootstarp(self.model_inputs)
+            model_inputs, y_fal_1 = self.gen_bootstarp()
         else:
             model_inputs = self.model_inputs
             y_fal_1 = self.y_fal_1
 
         if use_pretrained == 1:
+            print 'Loading pretrained model ...'
             pretrained_model = load_model(pretrained_dir)
-            acc = pretrained_model.evaluate(self.model_inputs, self.y_fal, verbose=True)
             pretrained_model.layers.pop()
             pretrained_model.layers.pop()
-            print 'Loss = %f', 'Accuracy = %f.' % (acc[0], acc[1])
             self.encoder.set_weights(pretrained_model.get_weights())
         else:
-            print '================================================='
-            print 'Initializing the cluster centers with k-means...'
-            print '================================================='
-            kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
-            y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
-            y_pred_last = np.copy(y_pred)
-            self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
-            #print kmeans.cluster_centers_
-            loss = 0
-            index = 0
-            index_array = np.arange(self.y_fal.shape[0])
-            if shuffle == True:
-                np.random.shuffle(index_array)
+            print 'Random initialization ...'
+        print '================================================='
+        print 'Initializing the cluster centers with k-means...'
+        print '================================================='
+        kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
+        y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
+        y_pred_last = np.copy(y_pred)
+        #self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
+        #print kmeans.cluster_centers_
+        loss = 0
+        index = 0
+        index_array = np.arange(self.y_fal.shape[0])
+        if shuffle == True:
+            np.random.shuffle(index_array)
 
-            print '================================================='
-            print 'Start training ...'
-            print '================================================='
+        print '================================================='
+        print 'Start training ...'
+        print '================================================='
 
-            for ite in range(int(epochs)):
-                #print self.model.layers[-1].clusters.get_value()
-                if ite % update_interval == 0:
-                    if ite != 0 :
-                        bar.done()
-                    bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
+        for ite in range(int(epochs)):
+            #print self.model.layers[-1].clusters.get_value()
+            if ite % update_interval == 0:
+                if ite != 0 :
+                    bar.done()
+                bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
 
-                    q = self.model.predict(model_inputs, verbose=0)
-                    p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
+                q = self.model.predict(model_inputs, verbose=0)
+                p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
-                    # evaluate the clustering performance
-                    y_pred = q.argmax(1)
-                    acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
-                    nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
-                    ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
-                    loss = np.round(loss, 5)
+                # evaluate the clustering performance
+                y_pred = q.argmax(1)
+                acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
+                nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
+                ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
+                loss = np.round(loss, 5)
+                print '****************************************'
+                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
+
+                # check stop criterion
+                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                y_pred_last = np.copy(y_pred)
+                if ite > 0 and delta_label < tol:
                     print '****************************************'
-                    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
+                    print('delta_label ', delta_label, '< tol ', tol)
+                    print('Reached tolerance threshold. Stopping training.')
+                    break
 
-                    # check stop criterion
-                    delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
-                    y_pred_last = np.copy(y_pred)
-                    if ite > 0 and delta_label < tol:
-                        print '****************************************'
-                        print('delta_label ', delta_label, '< tol ', tol)
-                        print('Reached tolerance threshold. Stopping training.')
-                        break
+            idx = index_array[index * batch_size: min((index+1) * batch_size, self.y_fal.shape[0])]
+            batch_inputs = {'input_dex_op': self.x_dex_op[idx], 'input_dex_permission': self.x_dex_permission[idx],
+                            'input_sandbox': self.x_sandbox[idx], 'input_sandbox_1': self.x_sandbox_1[idx]}
+            loss = self.model.train_on_batch(x=batch_inputs, y=p[idx])
+            index = index + 1 if (index + 1) * batch_size <= self.y_fal.shape[0] else 0
+            bar.current += 1
+            bar()
+            sleep(0.1)
 
-                idx = index_array[index * batch_size: min((index+1) * batch_size, self.y_fal.shape[0])]
-                batch_inputs = {'input_dex_op': self.x_dex_op[idx], 'input_dex_permission': self.x_dex_permission[idx],
-                                'input_sandbox': self.x_sandbox[idx], 'input_sandbox_1': self.x_sandbox_1[idx]}
-                loss = self.model.train_on_batch(x=batch_inputs, y=p[idx])
-                index = index + 1 if (index + 1) * batch_size <= self.y_fal.shape[0] else 0
-                bar.current += 1
-                bar()
-                sleep(0.1)
-
-            # save the trained model
-            print '****************************************'
-            print('saving model to:', save_dir + '/DEC_model_final.h5')
-            print '****************************************'
-            #self.model.save_weights(save_dir + '/DEC_model_final.h5')
+        # save the trained model
+        print '****************************************'
+        print('saving model to:', save_dir + '/DEC_model_final.h5')
+        print '****************************************'
+        #self.model.save_weights(save_dir + '/DEC_model_final.h5')
         return 0
 
     def test(self):

@@ -15,7 +15,7 @@ from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, j
 from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
-from tsne import bh_sne
+#from tsne import bh_sne
 
 def genaugbs(X, y, augment_size=10000, augment = False):
     randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
@@ -69,7 +69,13 @@ def load_data(path, dataset):
         y = io.loadmat(file)['Y']
         n_clusters = y.shape[1]
         y = np.array([np.where(r == 1)[0][0] for r in y])
-    return X, y, n_clusters, path
+    elif dataset == 'malware':
+        path = os.path.join(path, 'malware')
+        file = os.path.join(path, 'malware_data')
+        X = io.loadmat(file)['X'][0:1000]
+        y = io.loadmat(file)['y'].flatten()[0:1000]
+        n_clusters = 5
+    return X, y, path
 
 
 class DimReduce(object):
@@ -211,11 +217,3 @@ class ProgressBar(object):
         self.current = self.total
         self()
         print('', file=self.output)
-
-
-
-### Test gendata
-# n = 10
-# p = 2
-# c = 4
-# X, y = gendata(n,p,c)
