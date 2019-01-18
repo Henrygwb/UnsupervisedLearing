@@ -17,6 +17,7 @@ import Cluster_Ensembles as CE
 import collections
 from sklearn.metrics import precision_recall_fscore_support
 #from tsne import bh_sne
+from sklearn.preprocessing import Normalizer
 
 def genaugbs(X, y, augment_size=10000, augment = False):
     randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
@@ -220,3 +221,9 @@ class ProgressBar(object):
         self.current = self.total
         self()
         print('', file=self.output)
+
+def normalize(X_train, X_test):
+    transformer = Normalizer().fit(X_train)
+    X_train = transformer.transform(X_train)
+    X_test = transformer.transform(X_test)
+    return X_train, X_test

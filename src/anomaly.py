@@ -4,7 +4,7 @@ from sklearn.datasets import make_blobs
 from dagmm import DAGMM
 from sklearn.model_selection import train_test_split
 import pandas as pd
-from util import metrics
+from util import metrics, normalize
 metrics = metrics()
 from scipy import io
 
@@ -57,7 +57,8 @@ y = np.where(df.status == "normal.", 1, 0)
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.50, random_state=123)
 X_train, y_train = X_train[y_train == 0], y_train[y_train == 0]
 
-io.savemat('kddcup', {'X_train':X_train, 'y_train':y_train, 'X_test':X_test, 'y_test':y_test})
+X_train, X_test = normalize(X_train, X_test)
+io.savemat('../results/kddcup99/kddcup', {'X_train':X_train, 'y_train':y_train, 'X_test':X_test, 'y_test':y_test})
 
 model_dagmm = DAGMM(compress_hidden=[X_train.shape[1],60, 30, 10, 1],
                     estimate_hidden=[10, 4],
