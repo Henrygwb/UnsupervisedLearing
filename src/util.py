@@ -15,6 +15,7 @@ from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, j
 from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
+from sklearn.metrics import precision_recall_fscore_support
 #from tsne import bh_sne
 
 def genaugbs(X, y, augment_size=10000, augment = False):
@@ -147,7 +148,9 @@ class metrics(object):
         from sklearn.utils.linear_assignment_ import linear_assignment
         ind = linear_assignment(w.max() - w)
         return sum([w[i, j] for i, j in ind]) * 1.0 / y_pred.size
-
+    def presion_recall_fscore(self, y_true, y_pred):
+        prec, recall, fscore, _ = precision_recall_fscore_support(y_true, y_pred, average="binary")
+        return prec, recall, fscore
 
 ##### clustering approach
 class Cluster(object):

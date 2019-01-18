@@ -172,7 +172,7 @@ class DAGMM(object):
                     print("Epoch %d/%d: loss = %.5f" % (step, epoch, loss))
                 bar.current += 1
                 bar()
-                sleep(0.1)
+                # sleep(0.1)
             # energy = self.sess.run(self.energy, feed_dict={self.x: X})
             # print energy
             self.saver = tf.train.Saver()
@@ -188,6 +188,9 @@ class DAGMM(object):
         ari = np.round(metrics.ari(y, pred), 5)
         print '*********************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f' % (acc, nmi, ari))
+        print '*********************************************'
+        prec, recall, fscore = metrics.presion_recall_fscore(y, pred)
+        print('precision = %.5f, recall = %.5f, f1_score = %.5f' % (prec, recall, fscore))
         return 0
 
     def predict(self, X, thred):
@@ -202,6 +205,7 @@ class DAGMM(object):
             makedirs(dir)
         model_path = join(dir, model_name)
         self.saver.save(self.sess, model_path)
+        return 0
 
     def restore(self, model_path):
         with tf.Graph().as_default() as graph:
