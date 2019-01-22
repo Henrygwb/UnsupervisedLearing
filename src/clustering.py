@@ -132,18 +132,18 @@ def clustering(dataset,
             dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-                malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters)
-                malware_model.fit(batch_size = batch,
-                                    epochs = finetune_epochs,
-                                    optimizer = optimizer_malware,
-                                    update_interval = update_interval,
-                                    tol = tol,
-                                    shuffle = True,
-                                    save_dir = dir_path,
-                                    pretrained_dir = pretrained_dir,
-                                    use_boostrap = use_boostrap)
-                y_pred = malware_model.predict()
-                io.savemat(dir_path+'/results', {'y_pred':y_pred})
+            malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters)
+            malware_model.fit(batch_size = batch,
+                                epochs = finetune_epochs,
+                                optimizer = optimizer_malware,
+                                update_interval = update_interval,
+                                tol = tol,
+                                shuffle = True,
+                                save_dir = dir_path,
+                                pretrained_dir = pretrained_dir,
+                                use_boostrap = use_boostrap)
+            y_pred = malware_model.predict()
+            io.savemat(dir_path+'/results', {'y_pred':y_pred})
     return 0
 
 
