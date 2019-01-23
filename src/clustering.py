@@ -124,8 +124,10 @@ def clustering(dataset,
         for i in xrange(n_bootstrap):
             if i == 0:
                 use_boostrap = 0
+                use_pretrained = 0
             else:
                 use_boostrap = 1
+                use_pretrained = 0
             print '********************************'
             print 'Bootstrap sample time %d.' % i
             print '********************************'
@@ -134,14 +136,16 @@ def clustering(dataset,
                 os.system('mkdir '+dir_path)
             malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters)
             malware_model.fit(batch_size = batch,
-                                epochs = finetune_epochs,
-                                optimizer = optimizer_malware,
-                                update_interval = update_interval,
-                                tol = tol,
-                                shuffle = True,
-                                save_dir = dir_path,
-                                pretrained_dir = pretrained_dir,
-                                use_boostrap = use_boostrap)
+                              epochs = finetune_epochs,
+                              optimizer = optimizer_malware,
+                              update_interval = update_interval,
+                              tol = tol,
+                              shuffle = True,
+                              save_dir = dir_path,
+                              pretrained_dir = pretrained_dir,
+                              pre_epochs=pre_epochs,
+                              use_boostrap = use_boostrap,
+                              use_pretrained=use_pretrained)
             y_pred = malware_model.predict()
             io.savemat(dir_path+'/results', {'y_pred':y_pred})
     return 0
@@ -177,16 +181,15 @@ if __name__ == "__main__":
     dataset = 'malware'
     #n_clusters = [3,4,5,6]
     n_clusters = 4
-    n_bootstrap = 3
+    n_bootstrap = 5
     method = 'dec_malware'
     optimizer_malware = 'adam'
-    batch = 1000
+    batch = 3000
     hidden_neurons = []
     tol = 1e-6
-    pre_epochs = 0
-    finetune_epochs = 200
-    update_interval = 10
-
+    pre_epochs = 10
+    finetune_epochs = 10 
+    update_interval = 5
 
     clustering(dataset,
                 n_clusters,
