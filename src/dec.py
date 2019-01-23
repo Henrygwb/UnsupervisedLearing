@@ -243,12 +243,12 @@ class DEC_MALWARE(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        self.x_dex_op = self.x_dex_op#[0:1000]
-        self.x_sandbox = self.x_sandbox#[0:1000]
-        self.y_fal_1 = self.y_fal_1#[0:1000]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000]
-        self.y_fal = to_categorical(self.y_fal_1)#[0:1000]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000]
+        self.x_dex_op = self.x_dex_op[0:1000]
+        self.x_sandbox = self.x_sandbox[0:1000]
+        self.y_fal_1 = self.y_fal_1[0:1000]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000]
+        self.y_fal = to_categorical(self.y_fal_1)[0:1000]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000]
 
         print self.y_fal_1.shape
         print np.where(self.y_fal_1==0)[0].shape[0]
@@ -350,13 +350,13 @@ class DEC_MALWARE(object):
         print 'Start training ...'
         print '================================================='
 
-        for ite in range(int(epochs)):
-            
+        for ite in range(int(epochs/update_interval)):
+            print str(ite) + 'of ' + str(int(epochs/update_interval)) 
             #print self.model.layers[-1].clusters.get_value()
-            if ite % update_interval == 0:
-                if ite != 0 :
-                    bar.done()
-                bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
+          
+                #if ite != 0 :
+                #    bar.done()
+                #bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
 
                 q = self.model.predict(model_inputs, verbose=0)
                 p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
@@ -381,10 +381,10 @@ class DEC_MALWARE(object):
 
             batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
                             'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
-            loss = self.model.train_on_batch(x=batch_inputs, y=p)
-            bar.current += 1
-            bar()
-            sleep(0.1)
+            loss = self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
+            #bar.current += 1
+            #bar()
+            #sleep(0.1)
 
         print '****************************************'
         print('saving model to:', save_dir + '/DEC_model_final.h5')
