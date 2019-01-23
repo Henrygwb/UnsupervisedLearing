@@ -243,12 +243,12 @@ class DEC_MALWARE(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        self.x_dex_op = self.x_dex_op
-        self.x_sandbox = self.x_sandbox
-        self.y_fal_1 = self.y_fal_1
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)
-        self.y_fal = to_categorical(self.y_fal_1)
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)
+        self.x_dex_op = self.x_dex_op[0:1000]
+        self.x_sandbox = self.x_sandbox[0:1000]
+        self.y_fal_1 = self.y_fal_1[0:1000]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000]
+        self.y_fal = to_categorical(self.y_fal_1)[0:1000]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000]
 
         print self.y_fal_1.shape
         print np.where(self.y_fal_1==0)[0].shape[0]
@@ -282,6 +282,33 @@ class DEC_MALWARE(object):
         cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
         self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = cluster_layer)
 
+    def pretrain(self, dim_op, dim_per, dim_sand):
+        x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
+        x_dex_permission = Input(shape=(dim_per,1), name='input_dex_permission')
+        x_sandbox = Input(shape=(dim_sand,), name='input_sandbox')
+        x_sandbox_1 = Input(shape=(dim_sand,1), name='input_sandbox_1')
+
+        x_dex_op_1 = Dense(200, input_dim=dim_op, activation='relu')(x_dex_op)
+        x_dex_op_1 = Dropout(0.25)(x_dex_op_1)
+        x_dex_permission_1 = Conv1D(filters=16, kernel_size=2, activation='relu')(x_dex_permission)
+        x_dex_permission_2 = MaxPooling1D(4)(x_dex_permission_1)
+        x_dex_permission_embedded = Flatten()(x_dex_permission_2)
+        x_embedded = concatenate([x_dex_op_1, x_dex_permission_embedded])
+        hidden_1 = Dense(100, activation='relu')(x_embedded)
+        hidden_1 = Dropout(0.25)(hidden_1)
+        x_sandbox_embedded = Embedding(201, 16, input_length = dim_sand)(x_sandbox)
+        hidden_sandbox_1 = Bidirectional(LSTM(units=10, activation='tanh', input_shape = (dim_sand, 16), return_sequences=1))(x_sandbox_embedded)
+        hidden_sandbox_2 = Bidirectional(LSTM(units=10, activation='tanh', input_shape = (dim_sand, 16), return_sequences=0))(hidden_sandbox_1)
+        hidden_1_merged = concatenate([hidden_1, hidden_sandbox_2])
+        hidden_2 = Dense(100, activation='relu')(hidden_1_merged)
+        hidden_2 = Dropout(0.25)(hidden_2)
+        hidden_3 = Dense(50, activation='relu')(hidden_2)
+        output = Dense(5, activation='softmax')(hidden_3)
+        model = Model(inputs=[x_dex_op, x_dex_permission, x_sandbox], outputs=output)
+        model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        model.fit({'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
+                   'input_sandbox': self.x_sandbox}, self.y_fal, batch_size=3000, epochs=10)
+        return model
     def fit(self, batch_size, epochs, optimizer, update_interval, tol, shuffle, save_dir,  pretrained_dir, use_boostrap = 0, use_pretrained = 1):
         self.model.compile(optimizer = optimizer, loss = 'kld')
         if use_boostrap == 1:
@@ -297,7 +324,12 @@ class DEC_MALWARE(object):
             pretrained_model.layers.pop()
             self.encoder.set_weights(pretrained_model.get_weights())
         else:
-            print 'Random initialization ...'
+            print 'Pretraining ...'
+            pretrained_model = self.pretrain(dim_op=self.x_dex_op.shape[1],
+                                             dim_per=self.x_dex_permission.shape[1],dim_sand=self.x_sandbox.shape[1])
+            pretrained_model.layers.pop()
+            pretrained_model.layers.pop()
+            self.encoder.set_weights(pretrained_model.get_weights())
         print '================================================='
         print 'Initializing the cluster centers with k-means...'
         print '================================================='
