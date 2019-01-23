@@ -243,12 +243,12 @@ class DEC_MALWARE(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        self.x_dex_op = self.x_dex_op[0:1000]
-        self.x_sandbox = self.x_sandbox[0:1000]
-        self.y_fal_1 = self.y_fal_1[0:1000]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000]
-        self.y_fal = to_categorical(self.y_fal_1)[0:1000]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000]
+        self.x_dex_op = self.x_dex_op#[0:1000]
+        self.x_sandbox = self.x_sandbox#[0:1000]
+        self.y_fal_1 = self.y_fal_1#[0:1000]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000]
+        self.y_fal = to_categorical(self.y_fal_1)#[0:1000]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000]
 
         print self.y_fal_1.shape
         print np.where(self.y_fal_1==0)[0].shape[0]
@@ -354,37 +354,30 @@ class DEC_MALWARE(object):
             print str(ite) + 'of ' + str(int(epochs/update_interval)) 
             #print self.model.layers[-1].clusters.get_value()
           
-                #if ite != 0 :
-                #    bar.done()
-                #bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
+            q = self.model.predict(model_inputs, verbose=0)
+            p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
-                q = self.model.predict(model_inputs, verbose=0)
-                p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
+            # evaluate the clustering performance
+            y_pred = q.argmax(1)
+            acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
+            nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
+            ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
+            loss = np.round(loss, 5)
+            print '****************************************'
+            print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
 
-                # evaluate the clustering performance
-                y_pred = q.argmax(1)
-                acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
-                nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
-                ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
-                loss = np.round(loss, 5)
+            # check stop criterion
+            delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+            y_pred_last = np.copy(y_pred)
+            if ite > 0 and delta_label < tol:
                 print '****************************************'
-                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
-
-                # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
-                y_pred_last = np.copy(y_pred)
-                if ite > 0 and delta_label < tol:
-                    print '****************************************'
-                    print('delta_label ', delta_label, '< tol ', tol)
-                    print('Reached tolerance threshold. Stopping training.')
-                    break
+                print('delta_label ', delta_label, '< tol ', tol)
+                print('Reached tolerance threshold. Stopping training.')
+                break
 
             batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
                             'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
             loss = self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
-            #bar.current += 1
-            #bar()
-            #sleep(0.1)
 
         print '****************************************'
         print('saving model to:', save_dir + '/DEC_model_final.h5')
