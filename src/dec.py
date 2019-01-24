@@ -351,7 +351,7 @@ class DEC_MALWARE(object):
         print '================================================='
 
         for ite in range(int(epochs/update_interval)):
-            print str(ite) + 'of ' + str(int(epochs/update_interval)) 
+            print str(ite) + ' of ' + str(int(epochs/update_interval)) 
             #print self.model.layers[-1].clusters.get_value()
           
             q = self.model.predict(model_inputs, verbose=0)
@@ -362,9 +362,9 @@ class DEC_MALWARE(object):
             acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
             nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
             ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
-            loss = np.round(loss, 5)
+            #loss = np.round(loss, 5)
             print '****************************************'
-            print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
+            print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
             # check stop criterion
             delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
