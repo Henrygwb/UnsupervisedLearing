@@ -350,34 +350,34 @@ class DEC_MALWARE(object):
         print 'Start training ...'
         print '================================================='
 
-        for ite in range(int(epochs/update_interval)):
-            print str(ite) + ' of ' + str(int(epochs/update_interval)) 
-            #print self.model.layers[-1].clusters.get_value()
+        #for ite in range(int(epochs/update_interval)):
+        #    print str(ite) + ' of ' + str(int(epochs/update_interval)) 
+        #    #print self.model.layers[-1].clusters.get_value()
           
-            q = self.model.predict(model_inputs, verbose=0)
-            p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
+        #    q = self.model.predict(model_inputs, verbose=0)
+        #    p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
             # evaluate the clustering performance
-            y_pred = q.argmax(1)
-            acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
-            nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
-            ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
+        #    y_pred = q.argmax(1)
+        #    acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
+        #    nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
+        #    ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
             #loss = np.round(loss, 5)
-            print '****************************************'
-            print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
+        #    print '****************************************'
+        #    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
             # check stop criterion
-            delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
-            y_pred_last = np.copy(y_pred)
-            if ite > 0 and delta_label < tol:
-                print '****************************************'
-                print('delta_label ', delta_label, '< tol ', tol)
-                print('Reached tolerance threshold. Stopping training.')
-                break
+         #   delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+         #   y_pred_last = np.copy(y_pred)
+         #   if ite > 0 and delta_label < tol:
+         #       print '****************************************'
+         #       print('delta_label ', delta_label, '< tol ', tol)
+         #       print('Reached tolerance threshold. Stopping training.')
+         #       break
 
-            batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
-                            'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
-            loss = self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
+          #  batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
+          #                  'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
+          #  loss = self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
 
         print '****************************************'
         print('saving model to:', save_dir + '/DEC_model_final.h5')
