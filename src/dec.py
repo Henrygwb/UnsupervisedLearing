@@ -187,8 +187,8 @@ class DEC(object):
 
 
 class DEC_MALWARE(object):
-    def __init__(self, data_path_1, data_path_2, n_clusters):
-        self.load_data(data_path_1, data_path_2)
+    def __init__(self, data_path_1, data_path_2, n_clusters, label_change):
+        self.load_data(data_path_1, data_path_2, label_change)
         self.n_clusters = n_clusters
         self.model_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
                         'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
@@ -218,7 +218,7 @@ class DEC_MALWARE(object):
         y_fal_1 = self.y_fal_1[randidx]
         return model_inputs, y_fal_1
 
-    def load_data(self, data_path_1, data_path_2, use_two = 0, use_malware_only = 1):
+    def load_data(self, data_path_1, data_path_2, label_change={2:4}, use_two = 0, use_malware_only = 1):
         recover_files = np.load(data_path_1)
         dex = recover_files['x_train_dex']
         x_opcode_count = dex[:,0:11+256+1]
@@ -243,19 +243,23 @@ class DEC_MALWARE(object):
             self.x_sandbox = np.delete(self.x_sandbox, nonzero_row, 0)
             self.y_fal_1 = np.delete(self.y_fal_1, nonzero_row, 0) - 1
 
-        self.x_dex_op = self.x_dex_op#[0:1000]
-        self.x_sandbox = self.x_sandbox#[0:1000]
-        self.y_fal_1 = self.y_fal_1#[0:1000]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000]
-        self.y_fal = to_categorical(self.y_fal_1)#[0:1000]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000]
+        for l in label_change.keys():
+            l_sub = label_change[l]
+            self.y_fal_1[self.y_fal_1==l] = l_sub
 
-        print self.y_fal_1.shape
-        print np.where(self.y_fal_1==0)[0].shape[0]
-        print np.where(self.y_fal_1==1)[0].shape[0]
-        print np.where(self.y_fal_1==2)[0].shape[0]
-        print np.where(self.y_fal_1==3)[0].shape[0]
-        print np.where(self.y_fal_1==4)[0].shape[0]
+        ii = 0
+        for l in np.unique(self.y_fal_1):
+            self.y_fal_1[self.y_fal_1==l] = ii
+            print np.where(self.y_fal_1 == ii)[0].shape[0]
+            ii = ii + 1
+
+        self.x_dex_op = self.x_dex_op[0:1000]
+        self.x_sandbox = self.x_sandbox[0:1000]
+        self.y_fal_1 = self.y_fal_1[0:1000]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000]
+        self.y_fal = to_categorical(self.y_fal_1)[0:1000]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000]
+
 
     def build_model(self, dim_op, dim_per, dim_sand):
         x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
@@ -303,7 +307,7 @@ class DEC_MALWARE(object):
         hidden_2 = Dense(100, activation='relu')(hidden_1_merged)
         hidden_2 = Dropout(0.25)(hidden_2)
         hidden_3 = Dense(50, activation='relu')(hidden_2)
-        output = Dense(5, activation='softmax')(hidden_3)
+        output = Dense(self.y_fal.shape[1], activation='softmax')(hidden_3)
         model = Model(inputs=[x_dex_op, x_dex_permission, x_sandbox], outputs=output)
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         model.fit({'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
@@ -332,16 +336,15 @@ class DEC_MALWARE(object):
             pretrained_model.layers.pop()
             pretrained_model.layers.pop()
             self.encoder.set_weights(pretrained_model.get_weights())
+            self.encoder.save(save_dir+'/DEC_model.h5')
         print '================================================='
         print 'Initializing the cluster centers with k-means...'
         print '================================================='
-        kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
+        kmeans = KMeans(n_clusters = self.n_clusters)
         y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
         y_pred_last = np.copy(y_pred)
         self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
 
-        loss = 0
-        index = 0
         index_array = np.arange(self.y_fal.shape[0])
         if shuffle == True:
             np.random.shuffle(index_array)
@@ -350,48 +353,50 @@ class DEC_MALWARE(object):
         print 'Start training ...'
         print '================================================='
 
-        #for ite in range(int(epochs/update_interval)):
-        #    print str(ite) + ' of ' + str(int(epochs/update_interval)) 
-        #    #print self.model.layers[-1].clusters.get_value()
-          
-        #    q = self.model.predict(model_inputs, verbose=0)
-        #    p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
+        if epochs == 0:
+            print '================================================='
+            print 'Start evaluate ...'
+            print '================================================='
+            acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
+            nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
+            ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
-            # evaluate the clustering performance
-        #    y_pred = q.argmax(1)
-        #    acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
-        #    nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
-        #    ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
-            #loss = np.round(loss, 5)
-        #    print '****************************************'
-        #    print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
+        else:
+            for ite in range(int(epochs/update_interval)):
+                print str(ite) + ' of ' + str(int(epochs/update_interval))
+                #print self.model.layers[-1].clusters.get_value()
 
-            # check stop criterion
-         #   delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
-         #   y_pred_last = np.copy(y_pred)
-         #   if ite > 0 and delta_label < tol:
-         #       print '****************************************'
-         #       print('delta_label ', delta_label, '< tol ', tol)
-         #       print('Reached tolerance threshold. Stopping training.')
-         #       break
+                q = self.model.predict(model_inputs, verbose=0)
+                p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
-          #  batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
-          #                  'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
-          #  loss = self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
+                # evaluate the clustering performance
+                y_pred = q.argmax(1)
+                acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
+                nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
+                ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
+                print '****************************************'
+                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
-        print '****************************************'
-        print('saving model to:', save_dir + '/DEC_model_final.h5')
-        print '****************************************'
-        self.model.save_weights(save_dir + '/DEC_model_final.h5')
-        return 0
+                # check stop criterion
+                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                y_pred_last = np.copy(y_pred)
+                if ite > 0 and delta_label < tol:
+                   print '****************************************'
+                   print('delta_label ', delta_label, '< tol ', tol)
+                   print('Reached tolerance threshold. Stopping training.')
+                   break
 
-    def predict(self):
-        print '================================================='
-        print 'Start evaluate ...'
-        print '================================================='
-        y_pred = self.predict_classes(self.model_inputs)
-        acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
-        nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
-        ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
-        print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+                batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
+                               'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
+                self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
+            print '================================================='
+            print 'Start evaluate ...'
+            print '================================================='
+            y_pred = self.predict_classes(self.model_inputs)
+            acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
+            nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
+            ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
+            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
+
         return y_pred

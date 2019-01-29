@@ -14,6 +14,7 @@ from keras.optimizers import SGD
 metrics = metrics()
 
 def clustering(dataset,
+               label_change,
                n_clusters,
                n_bootstrap,
                method,
@@ -134,19 +135,23 @@ def clustering(dataset,
             dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-            malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters)
-            malware_model.fit(batch_size = batch,
-                              epochs = finetune_epochs,
-                              optimizer = optimizer_malware,
-                              update_interval = update_interval,
-                              tol = tol,
-                              shuffle = True,
-                              save_dir = dir_path,
-                              pretrained_dir = pretrained_dir,
-                              pre_epochs=pre_epochs,
-                              use_boostrap = use_boostrap,
-                              use_pretrained=use_pretrained)
-            y_pred = malware_model.predict()
+            malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters, label_change = label_change)
+            io.savemat(dir_path + '/label', {'y': malware_model.y_fal_1})
+            io.savemat(dir_path + '/data', {'x_dex_op': malware_model.x_dex_op,
+                                            'x_sandbox': malware_model.x_sandbox,
+                                            'x_dex_permission': malware_model.x_dex_permission,
+                                            'x_sandbox_1': malware_model.x_sandbox_1})
+            y_pred= malware_model.fit(batch_size = batch,
+                                      epochs = finetune_epochs,
+                                      optimizer = optimizer_malware,
+                                      update_interval = update_interval,
+                                      tol = tol,
+                                      shuffle = True,
+                                      save_dir = dir_path,
+                                      pretrained_dir = pretrained_dir,
+                                      pre_epochs=pre_epochs,
+                                      use_boostrap = use_boostrap,
+                                      use_pretrained=use_pretrained)
             io.savemat(dir_path+'/results', {'y_pred':y_pred})
     return 0
 
@@ -181,17 +186,20 @@ if __name__ == "__main__":
     dataset = 'malware'
     #n_clusters = [3,4,5,6]
     n_clusters = 4
-    n_bootstrap = 5
+    #label_change = {'2':4}
+    label_change = {}
+    n_bootstrap = 1
     method = 'dec_malware'
     optimizer_malware = 'adam'
     batch = 3000
     hidden_neurons = []
     tol = 1e-6
-    pre_epochs = 10
-    finetune_epochs = 10 
+    pre_epochs = 4
+    finetune_epochs = 0
     update_interval = 5
 
     clustering(dataset,
+               label_change,
                 n_clusters,
                 n_bootstrap,
                 method,

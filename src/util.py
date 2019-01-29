@@ -16,7 +16,7 @@ from keras.preprocessing.image import ImageDataGenerator
 import Cluster_Ensembles as CE
 import collections
 from sklearn.metrics import precision_recall_fscore_support
-#from tsne import bh_sne
+from bhtsne import tsne
 from sklearn.preprocessing import Normalizer
 
 def genaugbs(X, y, augment_size=10000, augment = False):
@@ -87,7 +87,7 @@ class DimReduce(object):
         x_low = PCA(n_components=2).fit_transform(self.X)
         return x_low
     def bh_tsne(self):
-        return bh_sne(self.X, no_dims = 2)
+        return tsne(self.X.astype('float64'))
 
 class ensemble(object):
     def __init__(self, yb, n_bootstrap, num_sample):

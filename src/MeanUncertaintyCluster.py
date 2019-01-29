@@ -10,7 +10,7 @@ metrics = metrics()
 import math
 
 
-class MeanClustering(object):
+class ParititionAlignment(object):
     def __init__(self, y, yb, n_bootstrap):
         self.y = y.astype('int')
         self.n = y.shape[0]
@@ -152,9 +152,12 @@ class MeanClustering(object):
             y_tmp_ref = np.copy(yb[i*self.n:(i+1)*self.n])
             _, _, dist= self.align(yb_tmp, y_tmp_ref)
             advdist[i] = sum(dist) / float(self.n_bootstrap)
+
         idx_ref = int(np.argmin(advdist))
+        _, _, dist = self.align(yb, yb[idx_ref*self.n:(idx_ref+1)*self.n])
         print 'Index of the reference partition: %d' %idx_ref
-        return idx_ref
+
+        return idx_ref, dist
 
     def ota(self, idx_ref = None):
         """
@@ -170,7 +173,7 @@ class MeanClustering(object):
         k_rf = max(self.yb[(self.n * idx_ref):(self.n * (idx_ref+1))])+1
         y_ref = self.yb[(self.n * idx_ref):(self.n * (idx_ref+1))]
 
-        wt, clsct, _ = self.align(self.yb, y_ref)
+        wt, clsct, dist = self.align(self.yb, y_ref)
 
         # 3.1 compute the cluster-posterior of each bootstrap partition
         p_raw = []
@@ -186,7 +189,7 @@ class MeanClustering(object):
             wt_sub = wt_sub.reshape((clsct[i], k_rf))
             wt_row_sums = wt_sub.sum(axis=1)
             # print wt_row_sums
-            wt_row_sums[np.where(wt_row_sums) == 0] = 1
+            wt_row_sums[np.where(wt_row_sums == 0)] = 1
             wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
             p_t_r = np.matmul(p_raw[i].toarray(), wt_sub)
             p_t_r_sum = p_t_r_sum + p_t_r
@@ -201,7 +204,7 @@ class MeanClustering(object):
         print '****************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
 
-        return y_mean
+        return y_mean, dist
 
     def ota_costly(self):
         """
@@ -281,7 +284,7 @@ class MeanClustering(object):
         for i in xrange(self.n_bootstrap):
             wt_sub = wt[(sum(m[0:i])):sum(m[0:i+1]),]
             wt_row_sums = wt_sub.sum(axis=1)
-            wt_row_sums[np.where(wt_row_sums) == 0 ] = 1
+            wt_row_sums[np.where(wt_row_sums == 0)] = 1
             wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
             p_tild = np.matmul(p_raw[i].toarray(), wt_sub)
             p_tild_sum = p_tild_sum + p_tild
@@ -294,9 +297,20 @@ class MeanClustering(object):
         ari = np.round(metrics.ari(self.y, y_mean), 5)
         print '****************************************'
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-
         return y_mean
 
+    def par_stability(self, yb, metric='mean'):
+        """
+        Overall clustering stability
+        :return: p_mean, stability of the partition
+        """
+        advdist = np.zeros((self.n_bootstrap, ))
+        for i in xrange(self.n_bootstrap):
+            yb_tmp = np.copy(yb)
+            y_tmp_ref = np.copy(yb[i*self.n:(i+1)*self.n])
+            _, _, dist= self.align(yb_tmp, y_tmp_ref)
+            advdist[i] = sum(dist) / float(self.n_bootstrap)
+        return advdist
 
 class ClusterAnalysis(object):
     def __init__(self, yb, n_bootstrap, y_mean, len):
@@ -531,7 +545,7 @@ class ClusterAnalysis(object):
         
         return confidentset, SS
 
-    def clu_stablity(self, s_confset, s):
+    def clu_stability(self, s_confset, s):
         """
         :param s_confset: confit set of the cluster
         :param s: a collection of mathched clusters
@@ -573,23 +587,7 @@ class ClusterAnalysis(object):
         cap_i_j = metrics.jac(s_i, s_j)
         return cap_i_j
 
-    def par_stablity(self, dist, metric = 'mean'):
-        """
-        Overall clustering stability
-        :return: p_mean, stability of the partition
-        """
-        if metric == 'mean':
-            p_mean = np.mean(dist)
-        elif metric == 'entropy':
-            std = np.std(dist)
-            cate = round(dist/std)
-            idx, count = np.unique(cate, return_counts=True)
-            px = count/float(sum(count))
-            lpx = np.log2(px)
-            p_mean = -sum(px*lpx)
-        return p_mean
-
-def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean):
+def ota_c(yb, num_sample, n_bootstrap, return_mean):
     folder = 'tmp'
     if os.path.exists(folder) == False:
         os.mkdir(folder)
@@ -608,13 +606,14 @@ def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean
 
     rfcls = ybcls[(num_sample * idx):(num_sample * (idx+1))]
     k_rf = np.unique(rfcls).shape[0]
-    ybcls = np.hstack((rfcls, yb_stack))
+    ybcls = np.hstack((rfcls, yb_stack)).astype('int')
     ybcls.tofile('zb.cls', sep='\n')
     cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(n_bootstrap + 1) + \
-          " -t " + str(threshold) + " -a " + str(alpha) + " -2"
+          " -t " + str(0.8) + " -a " + str(0.1) + " -2"
     os.system(cmd)
     clst = np.loadtxt("zb.par")[:, 0][1:].astype('int')
     wt = np.loadtxt("zb.wt")
+    dist = np.loadtxt('zb.par')[:,1][1:]
 
     p_tild_sum = np.zeros((num_sample, k_rf))
 
@@ -624,8 +623,9 @@ def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean
             np.expand_dims(yb_stack[i * num_sample: (i+1) * num_sample], axis=1)).toarray()
         wt_sub = wt[m:m+clst[i], ]
         wt_row_sums = wt_sub.sum(axis=1)
-        wt_row_sums[np.where(wt_row_sums) == 0] = 1
+        wt_row_sums[np.where(wt_row_sums == 0)] = 1
         wt_sub = wt_sub / wt_row_sums[:, np.newaxis]
+
         p_tild = np.matmul(p_raw_tmp, wt_sub)
         p_tild_sum = p_tild_sum + p_tild
         m = m+clst[i]
@@ -635,11 +635,45 @@ def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean
         y_mean = np.argmax(p_bar, axis=1)
     else:
         y_mean = rfcls
+    os.chdir('..')
+    os.system('rm -r tmp')
+    return y_mean, dist
 
+def par_stability_c(yb, n_bootstrap, num_sample):
+    folder = 'tmp'
+    if os.path.exists(folder) == False:
+        os.mkdir(folder)
+    shutil.copy2("labelsw_bunch2", os.path.join(folder, "labelsw_bunch2"))
+    shutil.copy2("labelsw", os.path.join(folder, "labelsw"))
+    os.chdir('tmp')
+    advdist = np.zeros((n_bootstrap,))
+    for idx in xrange(n_bootstrap):
+        rfcls = yb[(num_sample * idx):(num_sample * (idx+1))]
+        k_rf = np.unique(rfcls).shape[0]
+        ybcls = np.hstack((rfcls, yb)).astype('int')
+        ybcls.tofile('zb.cls', sep='\n')
+        cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(n_bootstrap + 1) + \
+              " -t " + str(0.8) + " -a " + str(0.1) + " -2"
+        os.system(cmd)
+        dist = np.loadtxt('zb.par')[:,1][1:]
+        advdist[idx] = sum(dist) / float(n_bootstrap)
+    os.chdir('..')
+    os.system('rm -r tmp')
+    return advdist
+
+def confset_c(yb, num_sample, n_bootstrap, y_ref, threshold, alpha):
     ########### Confident point set #######################
-    rfcls = y_mean
+    folder = 'tmp'
+    if os.path.exists(folder) == False:
+        os.mkdir(folder)
+    shutil.copy2("labelsw_bunch2", os.path.join(folder, "labelsw_bunch2"))
+    shutil.copy2("labelsw", os.path.join(folder, "labelsw"))
+    os.chdir('tmp')
+    yb_stack = yb.flatten()
+
+    rfcls = y_ref
     k_rf = np.unique(rfcls).shape[0]
-    ybcls = np.hstack((rfcls, yb_stack))
+    ybcls = np.hstack((rfcls, yb_stack)).astype('int')
     ybcls.tofile('zb.cls', sep='\n')
     cmd = "./labelsw -i zb.cls -o zb.ls -p zb.par -w zb.wt -h zb.h -c zb.summary -b " + str(n_bootstrap + 1) + \
           " -t " + str(threshold) + " -a " + str(alpha) + " -2"
@@ -648,7 +682,7 @@ def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean
     clst = np.loadtxt("zb.par")[:, 0][1:].astype('int')
     dist = np.loadtxt('zb.par')[:,1][1:]
 
-    cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_mean, len=num_sample)
+    cluster_analy = ClusterAnalysis(yb, n_bootstrap, y_ref, len=num_sample)
     cluster_id, sample_id = cluster_analy.matchcluster(res, clst)
     Interset = cluster_analy.interset(sample_id, cluster_id)
 
@@ -662,7 +696,7 @@ def MeanUncertainty_c(yb, num_sample, n_bootstrap, threshold, alpha, return_mean
         confidentset[idx_tmp] = lines_tmp.astype('int')
     os.chdir('..')
     os.system('rm -r tmp')
-    return y_mean, confidentset, Interset, cluster_id, dist, cluster_analy
+    return confidentset, Interset, cluster_id, dist, cluster_analy
 
 """
 test_code:
