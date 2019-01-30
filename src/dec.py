@@ -100,9 +100,9 @@ class DEC(object):
         self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
 
         self.model.compile(optimizer = optimizer, loss = 'kld')
-        print '================================================='
-        print 'Initializing the cluster centers with k-means...'
-        print '================================================='
+        print('=================================================')
+        print('Initializing the cluster centers with k-means...')
+        print('=================================================')
         kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
         y_pred = kmeans.fit_predict(self.hidden_representations(self.X))
         y_pred_last = np.copy(y_pred)
@@ -112,9 +112,9 @@ class DEC(object):
         index = 0
         index_array = np.arange(self.X.shape[0])
 
-        print '================================================='
-        print 'Start training ...'
-        print '================================================='
+        print('=================================================')
+        print('Start training ...')
+        print('=================================================')
 
         for ite in range(int(epochs)):
             #print self.model.layers[-1].clusters.get_value()
@@ -132,14 +132,14 @@ class DEC(object):
                 nmi = np.round(metrics.nmi(self.y, y_pred), 5)
                 ari = np.round(metrics.ari(self.y, y_pred), 5)
                 loss = np.round(loss, 5)
-                print '****************************************'
+                print('****************************************')
                 print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
 
                 # check stop criterion
                 delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
                 y_pred_last = np.copy(y_pred)
                 if ite > 0 and delta_label < tol:
-                    print '****************************************'
+                    print('****************************************')
                     print('delta_label ', delta_label, '< tol ', tol)
                     print('Reached tolerance threshold. Stopping training.')
                     break
@@ -155,9 +155,9 @@ class DEC(object):
             sleep(0.1)
 
         # save the trained model
-        print '****************************************'
+        print('****************************************')
         print('saving model to:', save_dir + '/DEC_model_final.h5')
-        print '****************************************'
+        print('****************************************')
         #print self.model.layers[-1].clusters.get_value()
         self.model.save_weights(save_dir + '/DEC_model_final.h5')
 
@@ -168,16 +168,10 @@ class DEC(object):
         acc = np.round(metrics.acc(self.y, y_pred), 5)
         nmi = np.round(metrics.nmi(self.y, y_pred), 5)
         ari = np.round(metrics.ari(self.y, y_pred), 5)
-        print '================================================='
-        print 'Start evaluate ...'
-        print '================================================='
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return 0
 
     def predict(self, X_test, y_test):
-        print '================================================='
-        print 'Start evaluate ...'
-        print '================================================='
         y_pred = self.predict_classes(X_test)
         acc = np.round(metrics.acc(y_test, y_pred), 5)
         nmi = np.round(metrics.nmi(y_test, y_pred), 5)
@@ -337,32 +331,32 @@ class DEC_MALWARE(object):
             pretrained_model.layers.pop()
             self.encoder.set_weights(pretrained_model.get_weights())
             self.encoder.save(save_dir+'/DEC_model.h5')
-        print '================================================='
-        print 'Start training ...'
-        print '================================================='
-
+        print('=================================================')
+        print('Start training ...')
+        print('=================================================')
+        low_func = K.function(pretrained_model.inputs + [K.learning_phase()],
+                              outputs=[pretrained_model.layers[-3].output])
+        x_low = []
+        for i in xrange(self.x_dex_op.shape[0] / batch_size):
+            x_low.append(low_func([self.x_dex_op[i*batch_size:(i+1)*batch_size], self.x_dex_permission[i*batch_size:(i+1)*batch_size],
+                                   self.x_sandbox[i*batch_size:(i+1)*batch_size], 1.])[0])
+        x_low = np.asarray(x_low)
+        print x_low.shape
         if epochs == 0:
-	    #low_func = K.function(pretrained_model.inputs+[K.learning_phase()], outputs=[pretrained_model.layers[-3].output])
-            #x_low = low_func([self.x_dex_op, self.x_dex_permission, self.x_sandbox, 1.])[0]
-	    #print x_low.shape
-            x_low = self.encoder.predict(self.model_inputs, verbose = 1, batch_size = 3000)
-	    print 'Computing low d ...'
+            print('Computing low d ...')
             dr = DimReduce(x_low)
             x_low_2 = dr.cuda_tsne()
             cl = Cluster(x_low_2, x_low_2)
             y_pred = cl.mclust(self.n_clusters)
-            print '================================================='
-            print 'Start evaluate ...'
-            print '================================================='
             acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
             nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
             ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
             print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
             return y_pred, x_low, x_low_2
         else:
-            print '================================================='
-            print 'Initializing the cluster centers with k-means...'
-            print '================================================='
+            print('=================================================')
+            print('Initializing the cluster centers with k-means...')
+            print('=================================================')
             kmeans = KMeans(n_clusters=self.n_clusters)
             y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
             y_pred_last = np.copy(y_pred)
@@ -384,14 +378,14 @@ class DEC_MALWARE(object):
                 acc = np.round(metrics.acc(y_fal_1, y_pred), 5)
                 nmi = np.round(metrics.nmi(y_fal_1, y_pred), 5)
                 ari = np.round(metrics.ari(y_fal_1, y_pred), 5)
-                print '****************************************'
+                print('****************************************')
                 print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f' % (ite, acc, nmi, ari))
 
                 # check stop criterion
                 delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
                 y_pred_last = np.copy(y_pred)
                 if ite > 0 and delta_label < tol:
-                   print '****************************************'
+                   print('****************************************')
                    print('delta_label ', delta_label, '< tol ', tol)
                    print('Reached tolerance threshold. Stopping training.')
                    break
@@ -399,9 +393,6 @@ class DEC_MALWARE(object):
                 batch_inputs = {'input_dex_op': self.x_dex_op, 'input_dex_permission': self.x_dex_permission,
                                'input_sandbox': self.x_sandbox, 'input_sandbox_1': self.x_sandbox_1}
                 self.model.fit(x=batch_inputs, y=p, batch_size = batch_size, epochs=update_interval)
-            print '================================================='
-            print 'Start evaluate ...'
-            print '================================================='
             y_pred = self.predict_classes(self.model_inputs)
             acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
             nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)

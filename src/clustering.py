@@ -28,15 +28,15 @@ def clustering(dataset,
                using_own = False):
 
     if dataset == 'mnist' or dataset == 'rcv':
-        print '================================'
-        print 'Training ' + dataset + ' ...'
-        print '================================'
+        print('================================')
+        print('Training ' + dataset + ' ...')
+        print('================================')
 
         X, y, path = load_data(path="../results", dataset=dataset)
 
-        print '================================'
-        print 'Using' + method + ' for cluster number ' + str(n_clusters) + ' ...'
-        print '================================'
+        print('================================')
+        print('Using' + method + ' for cluster number ' + str(n_clusters) + ' ...')
+        print('================================')
         dir = method+'_'+str(n_clusters)
         path_method = os.path.join(path, dir)
 
@@ -51,9 +51,9 @@ def clustering(dataset,
             else:
                 pretrain = False
                 X_bs, y_bs = genaugbs(X, y)
-            print '********************************'
-            print 'Bootstrap sample time %d.' % i
-            print '********************************'
+            print('********************************')
+            print('Bootstrap sample time %d.' % i)
+            print('********************************')
             dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
@@ -111,9 +111,9 @@ def clustering(dataset,
                 io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred})
 
     elif dataset == 'malware':
-        print '================================'
-        print 'Training ' + dataset + ' for cluster number ' + str(n_clusters) + ' ...'
-        print '================================'
+        print('================================')
+        print('Training ' + dataset + ' for cluster number ' + str(n_clusters) + ' ...')
+        print('================================')
 
         data_path_1 = '../results/malware/trace1_train1.npz'
         data_path_2 = '../results/malware/trace1_train2.npz'
@@ -129,9 +129,9 @@ def clustering(dataset,
             else:
                 use_boostrap = 1
                 use_pretrained = 1
-            print '********************************'
-            print 'Bootstrap sample time %d.' % i
-            print '********************************'
+            print('********************************')
+            print('Bootstrap sample time %d.' % i)
+            print('********************************')
             dir_path = os.path.join(path_method, str(i)+'_bs')
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
