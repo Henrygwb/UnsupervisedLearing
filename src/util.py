@@ -18,7 +18,7 @@ import collections
 from sklearn.metrics import precision_recall_fscore_support
 from bhtsne import tsne
 from sklearn.preprocessing import Normalizer
-
+from tsnecuda import TSNE
 def genaugbs(X, y, augment_size=10000, augment = False):
     randidx = np.random.choice(X.shape[0], X.shape[0], replace=True)
     y = y[randidx]
@@ -86,6 +86,8 @@ class DimReduce(object):
     def pca(self):
         x_low = PCA(n_components=2).fit_transform(self.X)
         return x_low
+    def cuda_tsne(self):
+        return TSNE(n_components=2).fit_transform(self.X.astype('float64'))
     def bh_tsne(self):
         return tsne(self.X.astype('float64'))
 

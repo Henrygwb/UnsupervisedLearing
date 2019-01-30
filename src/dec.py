@@ -338,17 +338,17 @@ class DEC_MALWARE(object):
             self.encoder.set_weights(pretrained_model.get_weights())
             self.encoder.save(save_dir+'/DEC_model.h5')
         print '================================================='
-        print 'Initializing the cluster centers with k-means...'
-        print '================================================='
-
-        print '================================================='
         print 'Start training ...'
         print '================================================='
 
         if epochs == 0:
-            x_low = self.encoder.predict(self.model_inputs)
+	    #low_func = K.function(pretrained_model.inputs+[K.learning_phase()], outputs=[pretrained_model.layers[-3].output])
+            #x_low = low_func([self.x_dex_op, self.x_dex_permission, self.x_sandbox, 1.])[0]
+	    #print x_low.shape
+            x_low = self.encoder.predict(self.model_inputs, verbose = 1, batch_size = 3000)
+	    print 'Computing low d ...'
             dr = DimReduce(x_low)
-            x_low_2 = dr.bh_tsne()
+            x_low_2 = dr.cuda_tsne()
             cl = Cluster(x_low_2, x_low_2)
             y_pred = cl.mclust(self.n_clusters)
             print '================================================='
@@ -360,6 +360,9 @@ class DEC_MALWARE(object):
             print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
             return y_pred, x_low, x_low_2
         else:
+            print '================================================='
+            print 'Initializing the cluster centers with k-means...'
+            print '================================================='
             kmeans = KMeans(n_clusters=self.n_clusters)
             y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
             y_pred_last = np.copy(y_pred)

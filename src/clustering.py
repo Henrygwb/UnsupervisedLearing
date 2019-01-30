@@ -125,10 +125,10 @@ def clustering(dataset,
         for i in xrange(n_bootstrap):
             if i == 0:
                 use_boostrap = 0
-                use_pretrained = 0
+                use_pretrained = 1
             else:
                 use_boostrap = 1
-                use_pretrained = 0
+                use_pretrained = 1
             print '********************************'
             print 'Bootstrap sample time %d.' % i
             print '********************************'
