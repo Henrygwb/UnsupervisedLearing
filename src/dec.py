@@ -6,7 +6,7 @@ from keras.models import Model, load_model
 from keras.layers import Dense, Input, concatenate, LSTM, Embedding, Conv1D, MaxPooling1D, Flatten, Dropout, Bidirectional, Layer
 from keras.utils import to_categorical
 from sklearn.cluster import KMeans
-from util import metrics
+from util import metrics, Cluster, DimReduce
 from util import ProgressBar
 from time import sleep
 from keras.optimizers import SGD
@@ -253,12 +253,12 @@ class DEC_MALWARE(object):
             print np.where(self.y_fal_1 == ii)[0].shape[0]
             ii = ii + 1
 
-        self.x_dex_op = self.x_dex_op[0:1000]
-        self.x_sandbox = self.x_sandbox[0:1000]
-        self.y_fal_1 = self.y_fal_1[0:1000]
-        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)[0:1000]
-        self.y_fal = to_categorical(self.y_fal_1)[0:1000]
-        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)[0:1000]
+        self.x_dex_op = self.x_dex_op#[0:1000]
+        self.x_sandbox = self.x_sandbox#[0:1000]
+        self.y_fal_1 = self.y_fal_1#[0:1000]
+        self.x_dex_permission = np.expand_dims(self.x_dex_permission, axis=-1)#[0:1000]
+        self.y_fal = to_categorical(self.y_fal_1)#[0:1000]
+        self.x_sandbox_1 = np.expand_dims(self.x_sandbox, axis=-1)#[0:1000]
 
 
     def build_model(self, dim_op, dim_per, dim_sand):
@@ -340,20 +340,17 @@ class DEC_MALWARE(object):
         print '================================================='
         print 'Initializing the cluster centers with k-means...'
         print '================================================='
-        kmeans = KMeans(n_clusters = self.n_clusters)
-        y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
-        y_pred_last = np.copy(y_pred)
-        self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
-
-        index_array = np.arange(self.y_fal.shape[0])
-        if shuffle == True:
-            np.random.shuffle(index_array)
 
         print '================================================='
         print 'Start training ...'
         print '================================================='
 
         if epochs == 0:
+            x_low = self.encoder.predict(self.model_inputs)
+            dr = DimReduce(x_low)
+            x_low_2 = dr.bh_tsne()
+            cl = Cluster(x_low_2, x_low_2)
+            y_pred = cl.mclust(self.n_clusters)
             print '================================================='
             print 'Start evaluate ...'
             print '================================================='
@@ -361,8 +358,17 @@ class DEC_MALWARE(object):
             nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
             ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
             print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-
+            return y_pred, x_low, x_low_2
         else:
+            kmeans = KMeans(n_clusters=self.n_clusters)
+            y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
+            y_pred_last = np.copy(y_pred)
+            self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
+
+            index_array = np.arange(self.y_fal.shape[0])
+            if shuffle == True:
+                np.random.shuffle(index_array)
+
             for ite in range(int(epochs/update_interval)):
                 print str(ite) + ' of ' + str(int(epochs/update_interval))
                 #print self.model.layers[-1].clusters.get_value()
@@ -398,5 +404,4 @@ class DEC_MALWARE(object):
             nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
             ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
             print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-
-        return y_pred
+            return y_pred

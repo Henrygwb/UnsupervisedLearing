@@ -96,7 +96,7 @@ def clustering(dataset,
                               'train_y': y_bs,
                               'test_x': X,
                               'test_y': y,
-                              'lbd': 1,  # reconstruction
+                              'lbd': 1,  #reconstruction
                               'beta': 1,
                               'pretraining_epochs': pre_epochs,
                               'pretrain_lr_base': 0.01,
@@ -141,18 +141,19 @@ def clustering(dataset,
                                             'x_sandbox': malware_model.x_sandbox,
                                             'x_dex_permission': malware_model.x_dex_permission,
                                             'x_sandbox_1': malware_model.x_sandbox_1})
-            y_pred= malware_model.fit(batch_size = batch,
-                                      epochs = finetune_epochs,
-                                      optimizer = optimizer_malware,
-                                      update_interval = update_interval,
-                                      tol = tol,
-                                      shuffle = True,
-                                      save_dir = dir_path,
-                                      pretrained_dir = pretrained_dir,
-                                      pre_epochs=pre_epochs,
-                                      use_boostrap = use_boostrap,
-                                      use_pretrained=use_pretrained)
-            io.savemat(dir_path+'/results', {'y_pred':y_pred})
+            y_pred, x_low, x_low_2 = malware_model.fit(batch_size = batch,
+                                                        epochs = finetune_epochs,
+                                                        optimizer = optimizer_malware,
+                                                        update_interval = update_interval,
+                                                        tol = tol,
+                                                        shuffle = True,
+                                                        save_dir = dir_path,
+                                                        pretrained_dir = pretrained_dir,
+                                                        pre_epochs=pre_epochs,
+                                                        use_boostrap = use_boostrap,
+                                                        use_pretrained=use_pretrained)
+            io.savemat('results', {'x_low': x_low, 'x_low_2': x_low_2, 'y_pred':y_pred})
+
     return 0
 
 

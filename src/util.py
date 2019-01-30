@@ -161,7 +161,7 @@ class Cluster(object):
 
     ## k-means
     def kmeans(self, n_clusters):
-        km = cluster.k_means(n_clusters=n_clusters).fix(self.X_train)
+        km = cluster.KMeans(n_clusters=n_clusters).fit(self.X_train)
         self.y_pred = km.predict(self.X_test)
         return self.y_pred
 
@@ -179,7 +179,7 @@ class Cluster(object):
         return self.y_pred
 
     ## dbscan with knn
-    def mclust(self):
+    def dbscan(self):
         y_train = cluster.dbscan(algorithm='auto', eps=3, leaf_size=30, metric='euclidean',
                                  metric_params=None, min_samples=2, n_jobs=None, p=None).fix_predict(self.X_train)
         kn = KNN.fit(self.X_train, y_train)
