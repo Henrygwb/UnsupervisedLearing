@@ -244,7 +244,7 @@ class DEC_MALWARE(object):
         ii = 0
         for l in np.unique(self.y_fal_1):
             self.y_fal_1[self.y_fal_1==l] = ii
-            print np.where(self.y_fal_1 == ii)[0].shape[0]
+            #print np.where(self.y_fal_1 == ii)[0].shape[0]
             ii = ii + 1
 
         self.x_dex_op = self.x_dex_op#[0:1000]
@@ -276,9 +276,9 @@ class DEC_MALWARE(object):
         hidden_2 = Dense(100, activation='relu')(hidden_1_merged)
         hidden_2 = Dropout(0.25)(hidden_2)
         hidden_3 = Dense(50, activation='relu')(hidden_2)
-        self.encoder = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = hidden_3)
+        self.encoder = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox], outputs = hidden_3)
         cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
-        self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox, x_sandbox_1], outputs = cluster_layer)
+        self.model = Model(inputs = [x_dex_op, x_dex_permission, x_sandbox], outputs = cluster_layer)
 
     def pretrain(self, dim_op, dim_per, dim_sand, pre_epochs, batch_size):
         x_dex_op = Input(shape = (dim_op,), name = 'input_dex_op')
@@ -317,16 +317,18 @@ class DEC_MALWARE(object):
             y_fal_1 = self.y_fal_1
 
         if use_pretrained == 1:
-            print 'Loading pretrained model ...'
+            print('Loading pretrained model ...')
             pretrained_model = load_model(pretrained_dir)
-            pretrained_model.layers.pop()
-            pretrained_model.layers.pop()
+            pretrained_model.summary()
+            # pretrained_model.layers.pop()
+            # pretrained_model.layers.pop()
             self.encoder.set_weights(pretrained_model.get_weights())
         else:
-            print 'Pretraining ...'
+            print('Pretraining ...')
             pretrained_model = self.pretrain(dim_op=self.x_dex_op.shape[1],
                                              dim_per=self.x_dex_permission.shape[1],dim_sand=self.x_sandbox.shape[1],
                                              pre_epochs=pre_epochs, batch_size=batch_size)
+            pretrained_model.summary()
             pretrained_model.layers.pop()
             pretrained_model.layers.pop()
             self.encoder.set_weights(pretrained_model.get_weights())
@@ -334,31 +336,25 @@ class DEC_MALWARE(object):
         print('=================================================')
         print('Start training ...')
         print('=================================================')
-        low_func = K.function(pretrained_model.inputs + [K.learning_phase()],
-                              outputs=[pretrained_model.layers[-3].output])
+        low_func = K.function(self.encoder.inputs + [K.learning_phase()],
+                              outputs=[self.encoder.layers[-1].output])
         x_low = []
-        for i in xrange(self.x_dex_op.shape[0] / batch_size):
-            x_low.append(low_func([self.x_dex_op[i*batch_size:(i+1)*batch_size], self.x_dex_permission[i*batch_size:(i+1)*batch_size],
-                                   self.x_sandbox[i*batch_size:(i+1)*batch_size], 1.])[0])
-        x_low = np.asarray(x_low)
-        print x_low.shape
+
+        for i in range(int(self.x_dex_op.shape[0] / batch_size)):
+            x_low_tmp = low_func([self.x_dex_op[i*batch_size:(i+1)*batch_size,], self.x_dex_permission[i*batch_size:(i+1)*batch_size, ],
+                                   self.x_sandbox[i*batch_size:(i+1)*batch_size,], 1.])[0]
+            x_low.extend(x_low_tmp)
+        x_low = np.array(x_low)
+        print(x_low.shape)
         if epochs == 0:
-            print('Computing low d ...')
-            dr = DimReduce(x_low)
-            x_low_2 = dr.cuda_tsne()
-            cl = Cluster(x_low_2, x_low_2)
-            y_pred = cl.mclust(self.n_clusters)
-            acc = np.round(metrics.acc(self.y_fal_1, y_pred), 5)
-            nmi = np.round(metrics.nmi(self.y_fal_1, y_pred), 5)
-            ari = np.round(metrics.ari(self.y_fal_1, y_pred), 5)
-            print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
-            return y_pred, x_low, x_low_2
+            y_pred = []
+            return y_pred, x_low
         else:
             print('=================================================')
             print('Initializing the cluster centers with k-means...')
             print('=================================================')
             kmeans = KMeans(n_clusters=self.n_clusters)
-            y_pred = kmeans.fit_predict(self.encoder.predict(model_inputs))
+            y_pred = kmeans.fit_predict(x_low)
             y_pred_last = np.copy(y_pred)
             self.model.get_layer(name='clustering').set_weights([np.transpose(kmeans.cluster_centers_)])
 
@@ -367,7 +363,7 @@ class DEC_MALWARE(object):
                 np.random.shuffle(index_array)
 
             for ite in range(int(epochs/update_interval)):
-                print str(ite) + ' of ' + str(int(epochs/update_interval))
+                print(str(ite) + ' of ' + str(int(epochs/update_interval)))
                 #print self.model.layers[-1].clusters.get_value()
 
                 q = self.model.predict(model_inputs, verbose=0)
