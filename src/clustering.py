@@ -33,11 +33,14 @@ def clustering(dataset,
         print('================================')
 
         X, y, path = load_data(path="../results", dataset=dataset)
-
+        supervised = True
         print('================================')
-        print('Using' + method + ' for cluster number ' + str(n_clusters) + ' ...')
+        print('Using ' + method + ' for cluster number ' + str(n_clusters) + ' ...')
         print('================================')
-        dir = method+'_'+str(n_clusters)
+        if supervised == True:
+            dir = method+'_'+ str(n_clusters) + '_supervised'
+        else:
+            dir = method + '_' + str(n_clusters)
         path_method = os.path.join(path, dir)
 
         if os.path.exists(path_method) == False:
@@ -47,9 +50,8 @@ def clustering(dataset,
             if i == 0:
                 pretrain = True
                 X_bs, y_bs = X, y
-
             else:
-                pretrain = False
+                pretrain = True
                 X_bs, y_bs = genaugbs(X, y)
             print('********************************')
             print('Bootstrap sample time %d.' % i)
@@ -58,23 +60,37 @@ def clustering(dataset,
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
             if method == 'dec':
-                optimizer = SGD(0.01, 0.9)
-                dec = DEC(X_bs, y_bs, hidden_neurons, n_clusters)
-                dec.fit(optimizer=optimizer,
-                          batch_size=batch,
-                          pre_epochs = pre_epochs,
-                          epochs=finetune_epochs,
-                          tol= tol,
-                          update_interval=update_interval,
-                          pre_save_dir= path_method,
-                          save_dir=dir_path,
-                          shuffle= True,
-                          pretrain = pretrain)
-                dec.evaluate()
-
-                pred_test = dec.predict(X_test = X, y_test = y)
-                io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
-
+                if supervised == False:
+                    optimizer = SGD(0.01, 0.9)
+                    dec = DEC(X_bs, y_bs, hidden_neurons, n_clusters)
+                    dec.fit(optimizer=optimizer,
+                            batch_size=batch,
+                            pre_epochs = pre_epochs,
+                            epochs=finetune_epochs,
+                            tol= tol,
+                            update_interval=update_interval,
+                            pre_save_dir= dir_path,
+                            save_dir=dir_path,
+                            shuffle= True,
+                            pretrain = pretrain,
+                            supervised = supervised)
+                    pred_test = dec.predict(X_test = X, y_test = y)
+                    io.savemat(dir_path+'/'+str(i)+'_results', {'y_pred':pred_test})
+                else:
+                    optimizer = SGD(0.01, 0.9)
+                    dec = DEC(X_bs, y_bs, hidden_neurons, n_clusters)
+                    x_low = dec.fit(optimizer=optimizer,
+                                    batch_size=batch,
+                                    pre_epochs=pre_epochs,
+                                    epochs=finetune_epochs,
+                                    tol=tol,
+                                    update_interval=update_interval,
+                                    pre_save_dir=dir_path,
+                                    save_dir=dir_path,
+                                    shuffle=True,
+                                    pretrain=pretrain,
+                                    supervised=supervised)
+                    io.savemat(dir_path + '/' + str(i) + '_low_d', {'x_low': x_low})
             elif method == 'dcn':
                 if using_own == True:
                     print('Using tensorflow model...')
@@ -120,7 +136,7 @@ def clustering(dataset,
         path_method = '../results/malware/cluster_'+str(n_clusters)
         if os.path.exists(path_method) == False:
             os.system('mkdir ' + path_method)
-	
+
         for i in range(n_bootstrap):
             if i == 0:
                 use_boostrap = 0
@@ -131,11 +147,10 @@ def clustering(dataset,
             print('********************************')
             print('Bootstrap sample time %d.' % i)
             print('********************************')
-            dir_path = os.path.join(path_method, str(i+6)+'_bs')
+            dir_path = os.path.join(path_method, str(i)+'_bs')
             pretrained_dir = dir_path+'/DEC_model.h5'
             if os.path.exists(dir_path) == False:
                 os.system('mkdir '+dir_path)
-	    print dir_path
             malware_model = DEC_MALWARE(data_path_1, data_path_2, n_clusters, label_change = label_change)
             io.savemat(dir_path + '/label', {'y': malware_model.y_fal_1})
             io.savemat(dir_path + '/data', {'x_dex_op': malware_model.x_dex_op,
@@ -159,13 +174,21 @@ def clustering(dataset,
 
 
 if __name__ == "__main__":
-    """
+
     dataset = 'mnist'
+    n_clusters = 10
+    using_own = False
+    method = 'dec'
+    test = 0
     hidden_neurons = [784, 500, 500, 2000, n_clusters]
-    n_bootstraps = 10
+    n_bootstrap = 1
+    label_change = {}
+    optimizer_malware = ''
+    tol = 1e-5
+
     if method == 'dec':
         batch = 256
-        pre_epochs = 300
+        pre_epochs = 100
         finetune_epochs = 2e4
         update_interval = 140
 
@@ -179,18 +202,32 @@ if __name__ == "__main__":
     if test == 1:
         n_bootstraps = 1
         batch = 100
-        pre_epochs = 500
-        finetune_epochs = 300
-        update_interval = 20
+        pre_epochs = 1
+        finetune_epochs = 10
+        update_interval = 2
         using_own = True
-    """
 
+    clustering(dataset,
+               label_change,
+                n_clusters,
+                n_bootstrap,
+                method,
+                optimizer_malware,
+                batch,
+                hidden_neurons,
+                tol,
+                pre_epochs,
+                finetune_epochs,
+                update_interval,
+                using_own=False)
+
+    """
     dataset = 'malware'
     #n_clusters = [3,4,5,6]
     n_clusters = 5
     #label_change = {'2':4}
     label_change = {}
-    n_bootstrap = 4
+    n_bootstrap = 10
     method = 'dec_malware'
     optimizer_malware = 'adam'
     batch = 3000
@@ -213,3 +250,4 @@ if __name__ == "__main__":
                 finetune_epochs,
                 update_interval,
                 using_own=False)
+    """
