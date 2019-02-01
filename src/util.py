@@ -71,12 +71,6 @@ def load_data(path, dataset):
         y = io.loadmat(file)['Y']
         n_clusters = y.shape[1]
         y = np.array([np.where(r == 1)[0][0] for r in y])
-    elif dataset == 'malware':
-        path = os.path.join(path, 'malware')
-        file = os.path.join(path, 'malware_data')
-        X = io.loadmat(file)['X'][0:1000]
-        y = io.loadmat(file)['y'].flatten()[0:1000]
-        n_clusters = 5
     return X, y, path
 
 

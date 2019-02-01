@@ -139,7 +139,7 @@ class ParititionAlignment(object):
             m += clsct[i]*clsct_ref
         return wt, clsct, dc
 
-    def ref_idx(self, yb):
+    def ref_idx(self, yb, strategy):
         """
         Conduct the alignment between the bootstrap samples
         selecting the partition the has the minimum average distance to all the other partitions
@@ -151,7 +151,10 @@ class ParititionAlignment(object):
             yb_tmp = np.copy(yb)
             y_tmp_ref = np.copy(yb[i*self.n:(i+1)*self.n])
             _, _, dist= self.align(yb_tmp, y_tmp_ref)
-            advdist[i] = sum(dist) / float(self.n_bootstrap)
+            if strategy == 0:
+                advdist[i] = sum(dist) / float(self.n_bootstrap)
+            else:
+                advdist[i] = min(np.delete(dist, i))
 
         idx_ref = int(np.argmin(advdist))
         _, _, dist = self.align(yb, yb[idx_ref*self.n:(idx_ref+1)*self.n])
@@ -159,7 +162,7 @@ class ParititionAlignment(object):
 
         return idx_ref, dist
 
-    def ota(self, idx_ref = None):
+    def ota(self, idx_ref = None, strategy = 0):
         """
         Compute the mean partition by ota.
         :param idx_ref: index of reference partition
@@ -167,7 +170,7 @@ class ParititionAlignment(object):
         """
         # 1. select a reference partition.
         if idx_ref == None:
-            idx_ref  = self.ref_idx(self.yb)
+            idx_ref, _  = self.ref_idx(self.yb, strategy)
 
         # 2. compute w between reference partition and each bootstrap partitions
         k_rf = max(self.yb[(self.n * idx_ref):(self.n * (idx_ref+1))])+1
@@ -299,7 +302,7 @@ class ParititionAlignment(object):
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return y_mean
 
-    def par_stability(self, yb, metric='mean'):
+    def par_stability(self, yb, strategy=0):
         """
         Overall clustering stability
         :return: p_mean, stability of the partition
@@ -309,7 +312,10 @@ class ParititionAlignment(object):
             yb_tmp = np.copy(yb)
             y_tmp_ref = np.copy(yb[i*self.n:(i+1)*self.n])
             _, _, dist= self.align(yb_tmp, y_tmp_ref)
-            advdist[i] = sum(dist) / float(self.n_bootstrap)
+            if strategy == 0:
+                advdist[i] = sum(dist) / float(self.n_bootstrap)
+            else:
+                advdist[i] = min(np.delete(dist, i))
         return advdist
 
 class ClusterAnalysis(object):
