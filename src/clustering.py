@@ -33,7 +33,7 @@ def clustering(dataset,
         print('================================')
 
         X, y, path = load_data(path="../results", dataset=dataset)
-        supervised = True
+        supervised = False
         print('================================')
         print('Using ' + method + ' for cluster number ' + str(n_clusters) + ' ...')
         print('================================')
