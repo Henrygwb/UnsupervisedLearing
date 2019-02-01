@@ -35,6 +35,23 @@ class ClusteringLayer(Layer):
         return (input_shape[0], self.output_dim)
 
 
+def build_super(hidden_neurons, rate = 0.5, act='relu'):
+    n_layers = len(hidden_neurons) - 1
+    X = Input(shape=(hidden_neurons[0],), name='input')
+
+    for i in range(n_layers):
+        if i == 0:
+            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(X)
+            # H = Dropout(rate)(H)
+        else:
+            H = Dense(hidden_neurons[i + 1], activation=act, name='encoder_%d' % (i+1))(H)
+            # if i != 3:
+            #     H = Dropout(rate)(H)
+
+    Y = Dense(10, activation='softmax', name='soft')(H)
+
+    return Model(inputs=X, outputs=Y, name='AE')
+
 def build_ae(hidden_neurons, rate = 0.5, act='relu'):
     n_layers = len(hidden_neurons) - 1
     X = Input(shape=(hidden_neurons[0],), name='input')
@@ -68,6 +85,7 @@ class DEC(object):
         self.hidden_neurons = hidden_neurons
         self.input_dim = hidden_neurons[0]
         self.ae = build_ae(hidden_neurons)
+        self.super = build_super(hidden_neurons)
 
     def pretrain(self, batch_size, epochs, save_dir):
         self.ae.compile(optimizer='adam', loss = 'mse')
@@ -75,8 +93,17 @@ class DEC(object):
         self.ae.save(os.path.join(save_dir, 'pretrained_ae.h5'))
         print ('Finish pretraining and save the model to %s' % save_dir)
 
+    def pretrain_super(self, batch_size, epochs, save_dir):
+        self.super.compile(optimizer='adam', loss = 'categorical_crossentropy', metrics=['accuracy'])
+        yy = to_categorical(self.y)
+        self.super.fit(self.X, yy, batch_size = batch_size, epochs = epochs, verbose=1)
+        self.super.save(os.path.join(save_dir, 'pretrained_super.h5'))
+        print ('Finish pretraining and save the model to %s' % save_dir)
+
     def hidden_representations(self, X):
-        return self.encoder.predict(X)
+        low_func = K.function(self.encoder.inputs + [K.learning_phase()],
+                              outputs=[self.encoder.layers[-1].output])
+        return low_func([X, 1.0])[0]
 
     def predict_classes(self, X):
         q = self.model.predict(X, verbose = 0)
@@ -87,81 +114,90 @@ class DEC(object):
         return (p.T / p.sum(1)).T
 
     def fit(self, optimizer, batch_size, pre_epochs, epochs, tol, update_interval, pre_save_dir, save_dir, shuffle,
-              pretrain = False):
+              pretrain = False, supervised = False):
         if pretrain == False:
             self.ae = load_model(os.path.join(pre_save_dir, 'pretrained_ae.h5'))
             # self.ae.load_weights('../results/mnist/dec_16/ae_weights.h5')
         else:
-            self.pretrain(batch_size = batch_size, epochs = pre_epochs, save_dir = pre_save_dir)
-        self.encoder = Model(self.ae.input, self.ae.get_layer('encoder_' + str(len(self.hidden_neurons) - 1)).output)
-        self.encoder.compile(optimizer='adam', loss='mse')
+            if supervised == False:
+                self.pretrain(batch_size = batch_size, epochs = pre_epochs, save_dir = pre_save_dir)
+                self.encoder = Model(self.ae.input,
+                                     self.ae.get_layer('encoder_' + str(len(self.hidden_neurons) - 1)).output)
+                self.encoder.compile(optimizer='adam', loss='mse')
 
-        cluster_layer = ClusteringLayer(self.n_clusters,name='clustering')(self.encoder.output)
-        self.model = Model(inputs = self.encoder.input, outputs = cluster_layer)
+                cluster_layer = ClusteringLayer(self.n_clusters, name='clustering')(self.encoder.output)
+                self.model = Model(inputs=self.encoder.input, outputs=cluster_layer)
 
-        self.model.compile(optimizer = optimizer, loss = 'kld')
-        print('=================================================')
-        print('Initializing the cluster centers with k-means...')
-        print('=================================================')
-        kmeans = KMeans(n_clusters = self.n_clusters, n_init = 20)
-        y_pred = kmeans.fit_predict(self.hidden_representations(self.X))
-        y_pred_last = np.copy(y_pred)
-        self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
-        #print kmeans.cluster_centers_
-        loss = 0
-        index = 0
-        index_array = np.arange(self.X.shape[0])
-
-        print('=================================================')
-        print('Start training ...')
-        print('=================================================')
-
-        for ite in range(int(epochs)):
-            #print self.model.layers[-1].clusters.get_value()
-            if ite % update_interval == 0:
-                if ite != 0 :
-                    bar.done()
-                bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
-
-                q = self.model.predict(self.X, verbose=0)
-                p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
-
-                # evaluate the clustering performance
-                y_pred = q.argmax(1)
-                acc = np.round(metrics.acc(self.y, y_pred), 5)
-                nmi = np.round(metrics.nmi(self.y, y_pred), 5)
-                ari = np.round(metrics.ari(self.y, y_pred), 5)
-                loss = np.round(loss, 5)
-                print('****************************************')
-                print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
-
-                # check stop criterion
-                delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                self.model.compile(optimizer=optimizer, loss='kld')
+                print('=================================================')
+                print('Initializing the cluster centers with k-means...')
+                print('=================================================')
+                kmeans = KMeans(n_clusters=self.n_clusters, n_init=20)
+                y_pred = kmeans.fit_predict(self.hidden_representations(self.X))
                 y_pred_last = np.copy(y_pred)
-                if ite > 0 and delta_label < tol:
-                    print('****************************************')
-                    print('delta_label ', delta_label, '< tol ', tol)
-                    print('Reached tolerance threshold. Stopping training.')
-                    break
+                self.model.get_layer(name='clustering').set_weights([kmeans.cluster_centers_])
+                # print kmeans.cluster_centers_
+                loss = 0
+                index = 0
+                index_array = np.arange(self.X.shape[0])
 
-            if shuffle == True:
-                np.random.shuffle(index_array)
+                print('=================================================')
+                print('Start training ...')
+                print('=================================================')
 
-            idx = index_array[index * batch_size: min((index+1) * batch_size, self.X.shape[0])]
-            loss = self.model.train_on_batch(x=self.X[idx], y=p[idx])
-            index = index + 1 if (index + 1) * batch_size <= self.X.shape[0] else 0
-            bar.current += 1
-            bar()
-            sleep(0.1)
+                for ite in range(int(epochs)):
+                    # print self.model.layers[-1].clusters.get_value()
+                    if ite % update_interval == 0:
+                        if ite != 0:
+                            bar.done()
+                        bar = ProgressBar(update_interval, fmt=ProgressBar.FULL)
 
-        # save the trained model
-        print('****************************************')
-        print('saving model to:', save_dir + '/DEC_model_final.h5')
-        print('****************************************')
-        #print self.model.layers[-1].clusters.get_value()
-        self.model.save_weights(save_dir + '/DEC_model_final.h5')
+                        q = self.model.predict(self.X, verbose=0)
+                        p = self.auxiliary_distribution(q)  # update the auxiliary target distribution p
 
-        return y_pred
+                        # evaluate the clustering performance
+                        y_pred = q.argmax(1)
+                        acc = np.round(metrics.acc(self.y, y_pred), 5)
+                        nmi = np.round(metrics.nmi(self.y, y_pred), 5)
+                        ari = np.round(metrics.ari(self.y, y_pred), 5)
+                        loss = np.round(loss, 5)
+                        print('****************************************')
+                        print('Iter %d: acc = %.5f, nmi = %.5f, ari = %.5f, loss = %f' % (ite, acc, nmi, ari, loss))
+
+                        # check stop criterion
+                        delta_label = np.sum(y_pred != y_pred_last).astype(np.float32) / y_pred.shape[0]
+                        y_pred_last = np.copy(y_pred)
+                        if ite > 0 and delta_label < tol:
+                            print('****************************************')
+                            print('delta_label ', delta_label, '< tol ', tol)
+                            print('Reached tolerance threshold. Stopping training.')
+                            break
+
+                    if shuffle == True:
+                        np.random.shuffle(index_array)
+
+                    idx = index_array[index * batch_size: min((index + 1) * batch_size, self.X.shape[0])]
+                    loss = self.model.train_on_batch(x=self.X[idx], y=p[idx])
+                    index = index + 1 if (index + 1) * batch_size <= self.X.shape[0] else 0
+                    bar.current += 1
+                    bar()
+                    sleep(0.1)
+
+                # save the trained model
+                print('****************************************')
+                print('saving model to:', save_dir + '/DEC_model_final.h5')
+                print('****************************************')
+                # print self.model.layers[-1].clusters.get_value()
+                self.model.save_weights(save_dir + '/DEC_model_final.h5')
+
+                return y_pred
+
+            else:
+                self.pretrain_super(batch_size=batch_size, epochs=pre_epochs, save_dir=pre_save_dir)
+                self.encoder = Model(self.super.input,
+                                     self.super.get_layer('encoder_' + str(len(self.hidden_neurons) - 1)).output)
+                x_low = self.hidden_representations(self.X)
+                return x_low
 
     def evaluate(self):
         y_pred = self.predict_classes(self.X)
@@ -178,7 +214,6 @@ class DEC(object):
         ari = np.round(metrics.ari(y_test, y_pred), 5)
         print('acc = %.5f, nmi = %.5f, ari = %.5f.' % (acc, nmi, ari))
         return y_pred
-
 
 class DEC_MALWARE(object):
     def __init__(self, data_path_1, data_path_2, n_clusters, label_change):
