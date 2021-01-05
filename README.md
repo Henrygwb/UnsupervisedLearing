@@ -5,3 +5,4 @@
   - DCN: [Towards K-means-friendly Spaces: Simultaneous Deep Learning and Clustering. ICML 2017.](https://arxiv.org/pdf/1610.04794.pdf)
 - DL based anomaly detection
   - DAGMM: [Deep Autoencoding Gaussian Mixture Model for Unsupervised Anomaly Detection. ICLR, 2018.](https://openreview.net/pdf?id=BJJLHbb0-)
+- GPU version of tsne.
